@@ -21,12 +21,11 @@ ENV npm_config_audit=false \
     NODE_ENV=production \
     TZ=Asia/Ho_Chi_Minh
 
-# Cài dependencies
-# ⚠️ express PHẢI nằm trong "dependencies"
-RUN npm ci
-
-# Copy source code
+# Copy source code (trước npm ci để node_modules không bị ghi đè)
 COPY . .
+
+# Cài dependencies (tạo node_modules sau cùng)
+RUN npm ci
 
 EXPOSE 3000
 
