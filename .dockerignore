@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+dist
+dist2
+build
+*.log
+.git
+.gitignore
+*.md
+.vscode
+renderer.js
+index.html
+index.js

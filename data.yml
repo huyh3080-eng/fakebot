@@ -1,0 +1,24 @@
+ip: oceandeepsmc.net
+port: 25565
+mcVersion: 1.19.4
+autoCmdEnabled: true
+preConnectDelay: 0
+loginDelay: 3
+autoCmdDelay: 1
+firstCmdDelay: 1.5
+minOn: 600
+maxOn: 1200
+minOff: 30
+maxOff: 120
+servers:
+  smp:
+    accounts:
+      - hacker
+    selectedBots:
+      - hacker
+    autoCmds:
+      - /dn 1234567890
+  sky:
+    accounts: []
+    selectedBots: []
+    autoCmds: []

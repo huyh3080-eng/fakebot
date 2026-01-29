@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>OCEANDEEPSMC - ULTIMATE EDITION</title>
+  <style>
+    :root{
+      --bg:#070b16;
+      --border:rgba(148,163,184,.16);
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --accent:#3b82f6;
+      --danger:#ef4444;
+      --radius:16px;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,.18), transparent 55%),
+                  radial-gradient(900px 500px at 100% 30%, rgba(34,197,94,.14), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+
+    .wrap{
+      display:flex;
+      gap:14px;
+      padding:14px;
+      height: 100vh;
+    }
+
+    .left{
+      width: 560px;
+      min-width:560px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      overflow:auto;
+      padding-right:6px;
+    }
+
+    .right{
+      flex:1;
+      min-width:520px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      min-height:0;
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      padding:12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+
+    h2{ margin:0 0 10px 0; font-size:15px; letter-spacing:.3px; }
+    .mini{ color:var(--muted); font-size:12px; line-height: 1.35; }
+
+    /* logo header */
+    .header{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .logo{
+      width:40px;
+      height:36px;
+      border-radius:10px;
+      object-fit:cover;
+      border:1px solid rgba(148,163,184,.18);
+      background: rgba(255,255,255,.04);
+    }
+    .headerTitle{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      line-height:1.1;
+    }
+    .headerTitle .sub{
+      font-size:11px;
+      color:rgba(148,163,184,.85);
+    }
+
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+
+    .field{ display:flex; flex-direction:column; gap:6px; }
+    .label{
+      font-size: 12px;
+      color: #cbd5e1;
+      letter-spacing:.2px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap:8px;
+    }
+
+    input{
+      width:100%;
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(4, 10, 25, .6);
+      color: var(--text);
+      outline:none;
+    }
+
+    input:focus{
+      border-color: rgba(59,130,246,.30);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    }
+
+    /* select giống input */
+    select.select{
+      width:100%;
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(4, 10, 25, .6);
+      color: var(--text);
+      outline:none;
+      appearance:none;
+      cursor:pointer;
+
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(229,231,235,.9) 50%),
+        linear-gradient(135deg, rgba(229,231,235,.9) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
+    }
+
+    select.select:focus{
+      border-color: rgba(59,130,246,.30);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    }
+
+    select.select option{
+      background:#0b1222;
+      color:#e5e7eb;
+    }
+
+    button{
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(4, 10, 25, .55);
+      color: var(--text);
+      cursor:pointer;
+      transition: .15s ease;
+      user-select:none;
+    }
+
+    button:hover{ transform: translateY(-1px); filter:brightness(1.08); }
+
+    button.primary{
+      border-color: rgba(59,130,246,.35);
+      background: rgba(59,130,246,.18);
+    }
+
+    button.danger{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(239,68,68,.14);
+    }
+
+    /* toggle style */
+    button.toggleOff{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(239,68,68,.12);
+      color: #fecaca;
+    }
+    button.toggleOn{
+      border-color: rgba(34,197,94,.40);
+      background: rgba(34,197,94,.12);
+      color: #bbf7d0;
+    }
+
+    .bar{ display:flex; gap:10px; align-items:center; }
+    .btnRow2{ display:flex; gap:10px; margin-top:10px; }
+    .btnRow2 button{ flex:1; }
+
+    .row{
+      display:grid;
+      grid-template-columns: 22px 1fr 74px;
+      align-items:center;
+      gap:10px;
+      padding: 9px 10px;
+      border:1px solid var(--border);
+      border-radius: 14px;
+      margin-top:8px;
+      background: rgba(4,10,25,.35);
+      user-select:none;
+    }
+
+    .row span{
+      min-width:0;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .row button{ padding:6px 10px; border-radius: 12px; }
+
+    .chk{
+      appearance:none;
+      width:18px;height:18px;
+      border-radius:999px;
+      border:1px solid rgba(148,163,184,.35);
+      background: rgba(4,10,25,.35);
+      display:inline-grid; place-items:center;
+      cursor:pointer; transition:.15s ease;
+    }
+
+    .chk:checked{
+      border-color: rgba(34,197,94,.55);
+      box-shadow: 0 0 0 3px rgba(34,197,94,.12);
+      background: rgba(34,197,94,.18);
+    }
+
+    .chk:checked::after{
+      content:"";
+      width:8px;height:8px;border-radius:999px;
+      background: rgba(34,197,94,1);
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(148,163,184,.22);
+      background: rgba(255,255,255,.06);
+      color:#e5e7eb;
+      font-size:12px;
+      user-select:none;
+    }
+    .pill.smp{ border-color: rgba(59,130,246,.30); background: rgba(59,130,246,.12); }
+    .pill.sky{ border-color: rgba(34,197,94,.30); background: rgba(34,197,94,.10); }
+
+    /* Console */
+    .console{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      min-height:0;
+    }
+
+    .logBox{
+      flex:1;
+      overflow-y:auto;
+      overflow-x:hidden;
+      background: rgba(2, 6, 18, .85);
+      border:1px solid rgba(148,163,184,.18);
+      border-radius: var(--radius);
+      padding:10px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .logLine{ padding:2px 0; }
+
+    .chatWrap{ display:flex; gap:10px; align-items:stretch; }
+    .chatInputBig{
+      height: 54px;
+      font-size: 16px;
+      padding: 14px 14px;
+      flex:1;
+    }
+    .sendBtnBig{
+      min-width: 140px;
+      height: 54px;
+      font-size: 15px;
+    }
+
+    .helpBox{
+      margin-top:10px;
+      padding:10px;
+      border-radius: 14px;
+      border:1px dashed rgba(148,163,184,.22);
+      background: rgba(4,10,25,.25);
+    }
+    .helpBox ul{ margin:8px 0 0 18px; padding:0; }
+    .helpBox li{ margin:4px 0; }
+  </style>
+</head>
+<body>
+
+  <div class="wrap">
+    <div class="left">
+
+      <!-- SERVER CONFIG -->
+      <div class="card">
+
+        <div class="header" style="flex-direction:column; align-items:center; text-align:center;">
+          <img src="logo.png" class="logo">
+          <div class="headerTitle">
+            <h2 style="margin:0;">Server Config</h2>
+            <div class="sub">OCEANDEEPSMC - ULTIMATE EDITION</div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <div class="label">IP Server</div>
+            <input id="ip" placeholder="vd: oceandeepsmc.net" />
+            <div class="mini">IP/Host để bot vào (có thể là proxy). SMP/Skyblock sẽ phân biệt bằng lệnh auto của từng khung.</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Port</div>
+            <input id="port" placeholder="vd: 25565" />
+            <div class="mini">Cổng server (thường là 25565).</div>
+          </div>
+        </div>
+
+        <!-- MC VERSION -->
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Minecraft Version</div>
+            <select id="mcVersion" class="select">
+              <option value="">AUTO (không ép)</option>
+              <option value="1.19.4">1.19.4 (khuyên dùng)</option>
+              <option value="1.18.2">1.18.2</option>
+            </select>
+            <div class="mini">Chỉ giữ version từ <b>1.19.4 trở xuống</b>.</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Gợi ý</div>
+            <div class="mini">
+              SMP/Skyblock khác nhau ở <b>lệnh Auto</b> bên dưới (vd: <b>/server smp</b>, <b>/server skyblock</b>).
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Login Delay (giây)</div>
+            <input id="loginDelay" placeholder="vd: 1" />
+            <div class="mini">Khoảng cách thời gian giữa mỗi bot khi vào server (giữa bot #1, #2...).</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Connect Delay (giây)</div>
+            <input id="preConnectDelay" placeholder="vd: 2" />
+            <div class="mini">Chờ thêm trước khi mỗi bot bắt đầu connect (giảm kick "login too fast").</div>
+          </div>
+        </div>  
+
+        <!-- ✅ THÊM: AUTO COMMAND DELAY (GLOBAL) -->
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">First Cmd Delay (giây)</div>
+            <input id="firstCmdDelay" placeholder="vd: 1.5" />
+            <div class="mini">Chờ bao lâu sau khi vào server mới bắt đầu chạy lệnh auto.</div>
+          </div>
+
+          <div class="field">
+            <div class="label">AutoCmd Delay (giây) — Tất cả bot</div>
+            <input id="autoCmdDelay" placeholder="vd: 1" />
+            <div class="mini">Khoảng cách giữa mỗi lệnh Auto Commands (áp dụng cho SMP + Skyblock).</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">
+              Random Online/Offline
+              <button id="btnToggleAutoCmd" class="toggleOn" style="padding:7px 10px; border-radius:12px;">
+                AutoCmd: BẬT
+              </button>
+            </div>
+            <div class="mini" style="margin-top:2px;">
+              Bot sẽ online ngẫu nhiên trong khoảng Min On → Max On, sau đó nghỉ Min Off → Max Off rồi tự vào lại nếu còn tick.
+            </div>
+            <div class="mini" style="margin-top:6px;">
+              <b>AutoCmd:</b> Tắt/bật chạy lệnh tự động khi bot spawn.
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Min On (giây)</div>
+            <input id="minOn" placeholder="vd: 30" />
+            <div class="mini">Thời gian online ít nhất.</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Max On (giây)</div>
+            <input id="maxOn" placeholder="vd: 60" />
+            <div class="mini">Thời gian online nhiều nhất.</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Min Off (giây)</div>
+            <input id="minOff" placeholder="vd: 10" />
+            <div class="mini">Thời gian nghỉ ít nhất (sau khi quit).</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Max Off (giây)</div>
+            <input id="maxOff" placeholder="vd: 20" />
+            <div class="mini">Thời gian nghỉ nhiều nhất.</div>
+          </div>
+        </div>
+
+        <!-- GLOBAL RUN/STOP -->
+        <div class="btnRow2">
+          <button id="btnRunAll" class="primary">Chạy Tất Cả (SMP + Skyblock)</button>
+          <button id="btnStopAll" class="danger">Ngừng Tất Cả</button>
+        </div>
+
+        <div class="helpBox">
+          <div class="label">Ghi chú</div>
+          <ul class="mini">
+            <li><b>SMP</b> và <b>Skyblock</b> có bot list + auto commands riêng.</li>
+            <li>Bạn có thể set lệnh đầu tiên của SMP là <b>/server smp</b>, Skyblock là <b>/server skyblock</b>.</li>
+            <li>Chat gửi cho tất cả bot đang tick ở cả 2 khung.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SMP PANEL -->
+      <div class="card">
+        <div class="label" style="margin-bottom:10px;">
+          <h2 style="margin:0;">SMP</h2>
+          <span class="pill smp">Bot/AutoCmd: SMP</span>
+        </div>
+
+        <div class="bar">
+          <input id="botNameSmp" placeholder="Thêm bot SMP (vd: BotSMP01)..." />
+          <button id="btnAddBotSmp" class="primary">Thêm</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnSelectAllSmp" class="primary">Tick hết SMP</button>
+          <button id="btnUnselectAllSmp" class="danger">Bỏ tick SMP</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnRunSmp" class="primary">Chạy SMP</button>
+          <button id="btnStopSmp" class="danger">Ngừng SMP</button>
+        </div>
+
+        <div class="mini" style="margin-top:8px;">
+          Ghi chú: bot ở khung này dành cho <b>server SMP</b> (auto commands SMP ở bên dưới).
+        </div>
+
+        <div id="botListSmp"></div>
+
+        <div style="height:10px;"></div>
+
+        <h2 style="margin-top:6px;">Auto Commands — SMP</h2>
+        <div class="bar">
+          <input id="cmdTextSmp" placeholder="vd: /server smp, /login 123 ..." />
+          <button id="btnAddCmdSmp" class="primary">Thêm</button>
+        </div>
+        <div class="mini" style="margin-top:8px;">
+          Lệnh chỉ áp dụng cho bot tick trong khung <b>SMP</b>.
+        </div>
+        <div id="cmdListSmp"></div>
+      </div>
+
+      <!-- SKYBLOCK PANEL -->
+      <div class="card">
+        <div class="label" style="margin-bottom:10px;">
+          <h2 style="margin:0;">Skyblock</h2>
+          <span class="pill sky">Bot/AutoCmd: Skyblock</span>
+        </div>
+
+        <div class="bar">
+          <input id="botNameSky" placeholder="Thêm bot Skyblock (vd: BotSKY01)..." />
+          <button id="btnAddBotSky" class="primary">Thêm</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnSelectAllSky" class="primary">Tick hết Sky</button>
+          <button id="btnUnselectAllSky" class="danger">Bỏ tick Sky</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnRunSky" class="primary">Chạy Skyblock</button>
+          <button id="btnStopSky" class="danger">Ngừng Skyblock</button>
+        </div>
+
+        <div class="mini" style="margin-top:8px;">
+          Ghi chú: bot ở khung này dành cho <b>server Skyblock</b> (auto commands Skyblock ở bên dưới).
+        </div>
+
+        <div id="botListSky"></div>
+
+        <div style="height:10px;"></div>
+
+        <h2 style="margin-top:6px;">Auto Commands — Skyblock</h2>
+        <div class="bar">
+          <input id="cmdTextSky" placeholder="vd: /server skyblock, /login 123 ..." />
+          <button id="btnAddCmdSky" class="primary">Thêm</button>
+        </div>
+        <div class="mini" style="margin-top:8px;">
+          Lệnh chỉ áp dụng cho bot tick trong khung <b>Skyblock</b>.
+        </div>
+        <div id="cmdListSky"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: CONSOLE -->
+    <div class="right">
+      <div class="card console">
+        <h2>Console</h2>
+
+        <div id="logBox" class="logBox"></div>
+
+        <div class="chatWrap">
+          <input id="chatInput" class="chatInputBig"
+                 placeholder="Nhập chat... (Enter gửi bot đang tick, ↑↓ gọi lại)" />
+          <button id="btnSendChat" class="primary sendBtnBig">Nhập</button>
+        </div>
+
+        <div class="mini">
+          Console có thanh cuộn. Kéo lên để xem log cũ. Khi bạn đang xem log cũ, app sẽ không tự kéo xuống.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./renderer.js"></script>
+</body>
+</html>

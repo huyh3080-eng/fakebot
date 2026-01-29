@@ -1,0 +1,56 @@
+{
+  "name": "oceandeep-bot-panel",
+  "productName": "Oceandeep Bot Panel",
+  "version": "1.0.0",
+  "description": "Minecraft Bot Manager",
+  "author": "Oceandeep",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:web": "node server.js",
+    "dev": "electron .",
+    "build": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "ansi-to-html": "^0.7.2",
+    "express": "^4.22.1",
+    "js-yaml": "^4.1.0",
+    "mineflayer": "^4.33.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.oceandeep.botpanel",
+    "productName": "Oceandeep Bot Panel",
+    "asar": true,
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!dist2/**",
+      "!asar_extracted2/**",
+      "!node_modules/.cache/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

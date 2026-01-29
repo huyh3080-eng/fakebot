@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>OCEANDEEPSMC - Web Panel</title>
+  <style>
+    :root{
+      --bg:#070b16;
+      --border:rgba(148,163,184,.16);
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --accent:#3b82f6;
+      --danger:#ef4444;
+      --success:#22c55e;
+      --radius:16px;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,.18), transparent 55%),
+                  radial-gradient(900px 500px at 100% 30%, rgba(34,197,94,.14), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      min-height: 100vh;
+    }
+
+    .header-bar{
+      background: rgba(0,0,0,.3);
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-bar h1{
+      margin:0;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-badge{
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-connected{ background: rgba(34,197,94,.2); color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
+    .status-disconnected{ background: rgba(239,68,68,.2); color: #f87171; border: 1px solid rgba(239,68,68,.3); }
+    .status-connecting{ background: rgba(59,130,246,.2); color: #60a5fa; border: 1px solid rgba(59,130,246,.3); }
+
+    .wrap{
+      display:flex;
+      gap:14px;
+      padding:14px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .left{
+      width: 580px;
+      min-width:580px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      overflow:auto;
+      padding-right:6px;
+    }
+
+    .right{
+      flex:1;
+      min-width:520px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      min-height:0;
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      padding:12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+
+    h2{ margin:0 0 10px 0; font-size:15px; letter-spacing:.3px; }
+    .mini{ color:var(--muted); font-size:12px; line-height: 1.35; }
+
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+
+    .field{ display:flex; flex-direction:column; gap:6px; }
+    .label{
+      font-size: 12px;
+      color: #cbd5e1;
+      letter-spacing:.2px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap:8px;
+    }
+
+    input{
+      width:100%;
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(4, 10, 25, .6);
+      color: var(--text);
+      outline:none;
+    }
+
+    input:focus{
+      border-color: rgba(59,130,246,.30);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    }
+
+    select.select{
+      width:100%;
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(4, 10, 25, .6);
+      color: var(--text);
+      outline:none;
+      appearance:none;
+      cursor:pointer;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(229,231,235,.9) 50%),
+        linear-gradient(135deg, rgba(229,231,235,.9) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
+    }
+
+    select.select:focus{
+      border-color: rgba(59,130,246,.30);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    }
+
+    select.select option{
+      background:#0b1222;
+      color:#e5e7eb;
+    }
+
+    button{
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(4, 10, 25, .55);
+      color: var(--text);
+      cursor:pointer;
+      transition: .15s ease;
+      user-select:none;
+    }
+
+    button:hover{ transform: translateY(-1px); filter:brightness(1.08); }
+
+    button.primary{
+      border-color: rgba(59,130,246,.35);
+      background: rgba(59,130,246,.18);
+    }
+
+    button.danger{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(239,68,68,.14);
+    }
+
+    button.success{
+      border-color: rgba(34,197,94,.35);
+      background: rgba(34,197,94,.14);
+    }
+
+    button.toggleOff{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(239,68,68,.12);
+      color: #fecaca;
+    }
+    button.toggleOn{
+      border-color: rgba(34,197,94,.40);
+      background: rgba(34,197,94,.12);
+      color: #bbf7d0;
+    }
+
+    .bar{ display:flex; gap:10px; align-items:center; }
+    .btnRow2{ display:flex; gap:10px; margin-top:10px; }
+    .btnRow2 button{ flex:1; }
+
+    .row{
+      display:grid;
+      grid-template-columns: 22px 1fr 74px;
+      align-items:center;
+      gap:10px;
+      padding: 9px 10px;
+      border:1px solid var(--border);
+      border-radius: 14px;
+      margin-top:8px;
+      background: rgba(4,10,25,.35);
+      user-select:none;
+    }
+
+    .row span{
+      min-width:0;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .row button{ padding:6px 10px; border-radius: 12px; }
+
+    .chk{
+      appearance:none;
+      width:18px;height:18px;
+      border-radius:999px;
+      border:1px solid rgba(148,163,184,.35);
+      background: rgba(4,10,25,.35);
+      display:inline-grid; place-items:center;
+      cursor:pointer; transition:.15s ease;
+    }
+
+    .chk:checked{
+      border-color: rgba(34,197,94,.55);
+      box-shadow: 0 0 0 3px rgba(34,197,94,.12);
+      background: rgba(34,197,94,.18);
+    }
+
+    .chk:checked::after{
+      content:"";
+      width:8px;height:8px;border-radius:999px;
+      background: rgba(34,197,94,1);
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(148,163,184,.22);
+      background: rgba(255,255,255,.06);
+      color:#e5e7eb;
+      font-size:12px;
+      user-select:none;
+    }
+    .pill.smp{ border-color: rgba(59,130,246,.30); background: rgba(59,130,246,.12); }
+    .pill.sky{ border-color: rgba(34,197,94,.30); background: rgba(34,197,94,.10); }
+
+    .console{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      min-height:0;
+    }
+
+    .logBox{
+      flex:1;
+      overflow-y:auto;
+      overflow-x:hidden;
+      background: rgba(2, 6, 18, .85);
+      border:1px solid rgba(148,163,184,.18);
+      border-radius: var(--radius);
+      padding:10px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.35;
+      max-height: 500px;
+    }
+
+    .logLine{ 
+      padding: 2px 0;
+      font-size: 13px;
+      line-height: 1.4;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      word-break: break-word;
+    }
+
+    .chatWrap{ display:flex; gap:10px; align-items:stretch; }
+    .chatInputBig{
+      height: 54px;
+      font-size: 16px;
+      padding: 14px 14px;
+      flex:1;
+    }
+    .sendBtnBig{
+      min-width: 140px;
+      height: 54px;
+      font-size: 15px;
+    }
+
+    .helpBox{
+      margin-top:10px;
+      padding:10px;
+      border-radius: 14px;
+      border:1px dashed rgba(148,163,184,.22);
+      background: rgba(4,10,25,.25);
+    }
+    .helpBox ul{ margin:8px 0 0 18px; padding:0; }
+    .helpBox li{ margin:4px 0; }
+
+    @media (max-width: 1200px) {
+      .wrap{ flex-direction: column; }
+      .left{ width: 100%; min-width: 0; }
+      .right{ width: 100%; min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    <h1>
+      <img src="logo.png" style="width:32px;height:32px;border-radius:8px;" onerror="this.style.display='none'">
+      OCEANDEEPSMC - Web Panel
+    </h1>
+    <div id="connectionStatus" class="status-badge status-disconnected">Disconnected</div>
+  </div>
+
+  <div class="wrap">
+    <div class="left">
+      <!-- SERVER CONFIG -->
+      <div class="card">
+        <div class="label" style="margin-bottom:10px;">
+          <h2 style="margin:0;">Server Config</h2>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <div class="label">IP Server</div>
+            <input id="ip" placeholder="vd: oceandeepsmc.net" />
+            <div class="mini">IP/Host để bot vào</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Port</div>
+            <input id="port" placeholder="vd: 25565" />
+            <div class="mini">Cổng server (thường là 25565)</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Minecraft Version</div>
+            <select id="mcVersion" class="select">
+              <option value="">AUTO (không ép)</option>
+              <option value="1.19.4">1.19.4 (khuyên dùng)</option>
+              <option value="1.18.2">1.18.2</option>
+            </select>
+            <div class="mini">Chỉ giữ version từ <b>1.19.4 trở xuống</b></div>
+          </div>
+
+          <div class="field">
+            <div class="label">Login Delay (giây)</div>
+            <input id="loginDelay" placeholder="vd: 1" />
+            <div class="mini">Khoảng cách giữa mỗi bot khi vào server</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Connect Delay (giây)</div>
+            <input id="preConnectDelay" placeholder="vd: 2" />
+            <div class="mini">Chờ thêm trước khi connect (giảm kick)</div>
+          </div>
+
+          <div class="field">
+            <div class="label">First Cmd Delay (giây)</div>
+            <input id="firstCmdDelay" placeholder="vd: 1.5" />
+            <div class="mini">Chờ bao lâu sau khi vào server</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">AutoCmd Delay (giây)</div>
+            <input id="autoCmdDelay" placeholder="vd: 1" />
+            <div class="mini">Khoảng cách giữa mỗi lệnh Auto</div>
+          </div>
+
+          <div class="field">
+            <div class="label">
+              AutoCmd
+              <button id="btnToggleAutoCmd" class="toggleOn" style="padding:7px 10px; border-radius:12px;">
+                AutoCmd: BẬT
+              </button>
+            </div>
+            <div class="mini" style="margin-top:2px;">Tắt/bật chạy lệnh tự động</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Min On (giây)</div>
+            <input id="minOn" placeholder="vd: 30" />
+            <div class="mini">Thời gian online ít nhất</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Max On (giây)</div>
+            <input id="maxOn" placeholder="vd: 60" />
+            <div class="mini">Thời gian online nhiều nhất</div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Min Off (giây)</div>
+            <input id="minOff" placeholder="vd: 10" />
+            <div class="mini">Thời gian nghỉ ít nhất</div>
+          </div>
+
+          <div class="field">
+            <div class="label">Max Off (giây)</div>
+            <input id="maxOff" placeholder="vd: 20" />
+            <div class="mini">Thời gian nghỉ nhiều nhất</div>
+          </div>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnRunAll" class="success">Chạy Tất Cả (SMP + Skyblock)</button>
+          <button id="btnStopAll" class="danger">Ngừng Tất Cả</button>
+        </div>
+
+        <div class="helpBox">
+          <div class="label">Ghi chú</div>
+          <ul class="mini">
+            <li><b>SMP</b> và <b>Skyblock</b> có bot list + auto commands riêng</li>
+            <li>Bot sẽ online ngẫu nhiên trong khoảng Min On → Max On</li>
+            <li>Sau đó nghỉ Min Off → Max Off rồi tự vào lại</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SMP PANEL -->
+      <div class="card">
+        <div class="label" style="margin-bottom:10px;">
+          <h2 style="margin:0;">SMP</h2>
+          <span class="pill smp">Bot/AutoCmd: SMP</span>
+        </div>
+
+        <div class="bar">
+          <input id="botNameSmp" placeholder="Thêm bot SMP (vd: BotSMP01)..." />
+          <button id="btnAddBotSmp" class="primary">Thêm</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnSelectAllSmp" class="primary">Tick hết SMP</button>
+          <button id="btnUnselectAllSmp" class="danger">Bỏ tick SMP</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnRunSmp" class="success">Chạy SMP</button>
+          <button id="btnStopSmp" class="danger">Ngừng SMP</button>
+        </div>
+
+        <div id="botListSmp"></div>
+
+        <div style="height:10px;"></div>
+
+        <h2 style="margin-top:6px;">Auto Commands — SMP</h2>
+        <div class="bar">
+          <input id="cmdTextSmp" placeholder="vd: /server smp, /login 123 ..." />
+          <button id="btnAddCmdSmp" class="primary">Thêm</button>
+        </div>
+        <div id="cmdListSmp"></div>
+      </div>
+
+      <!-- SKYBLOCK PANEL -->
+      <div class="card">
+        <div class="label" style="margin-bottom:10px;">
+          <h2 style="margin:0;">Skyblock</h2>
+          <span class="pill sky">Bot/AutoCmd: Skyblock</span>
+        </div>
+
+        <div class="bar">
+          <input id="botNameSky" placeholder="Thêm bot Skyblock (vd: BotSKY01)..." />
+          <button id="btnAddBotSky" class="primary">Thêm</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnSelectAllSky" class="primary">Tick hết Sky</button>
+          <button id="btnUnselectAllSky" class="danger">Bỏ tick Sky</button>
+        </div>
+
+        <div class="btnRow2">
+          <button id="btnRunSky" class="success">Chạy Skyblock</button>
+          <button id="btnStopSky" class="danger">Ngừng Skyblock</button>
+        </div>
+
+        <div id="botListSky"></div>
+
+        <div style="height:10px;"></div>
+
+        <h2 style="margin-top:6px;">Auto Commands — Skyblock</h2>
+        <div class="bar">
+          <input id="cmdTextSky" placeholder="vd: /server skyblock, /login 123 ..." />
+          <button id="btnAddCmdSky" class="primary">Thêm</button>
+        </div>
+        <div id="cmdListSky"></div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="card console">
+        <div class="label" style="margin-bottom:10px;">
+          <h2 style="margin:0;">Console</h2>
+          <button id="btnClearLog" class="primary" style="padding:5px 10px;">🗑️ Xóa</button>
+        </div>
+        <div id="logBox" class="logBox"></div>
+        <div class="chatWrap">
+          <input id="chatInput" class="chatInputBig" placeholder="Nhập chat... (Enter gửi, ↑↓ gọi lại)" />
+          <button id="sendChatBtn" class="sendBtnBig primary">📤 Gửi</button>
+        </div>
+        <div class="mini">
+          Console có thanh cuộn. Kéo lên để xem log cũ.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    let CFG = {
+      ip: "localhost",
+      port: 25565,
+      mcVersion: "",
+      autoCmdEnabled: true,
+      preConnectDelay: 0,
+      loginDelay: 1,
+      autoCmdDelay: 1,
+      firstCmdDelay: 1.5,
+      minOn: 30,
+      maxOn: 60,
+      minOff: 10,
+      maxOff: 20,
+      servers: {
+        smp: { accounts: [], selectedBots: [], autoCmds: [] },
+        sky: { accounts: [], selectedBots: [], autoCmds: [] },
+      },
+    };
+
+    let UI_SMP = new Set();
+    let UI_SKY = new Set();
+    let ws = null;
+    let reconnectTimeout = null;
+    let chatHistory = [];
+    let historyIndex = -1;
+    let isPinnedToBottom = true;
+
+    // Ansi to HTML - supports both Minecraft § codes and ANSI escape codes
+    const ansiColors = {
+      '0': '#000000', '1': '#0000AA', '2': '#00AA00', '3': '#00AAAA',
+      '4': '#AA0000', '5': '#AA00AA', '6': '#FFAA00', '7': '#AAAAAA',
+      '8': '#555555', '9': '#5555FF', 'a': '#55FF55', 'b': '#55FFFF',
+      'c': '#FF5555', 'd': '#FF55FF', 'e': '#FFFF55', 'f': '#FFFFFF',
+      '30': '#000000', '31': '#AA0000', '32': '#00AA00', '33': '#AA00AA',
+      '34': '#0000AA', '35': '#AA00AA', '36': '#00AAAA', '37': '#AAAAAA',
+      '90': '#555555', '91': '#FF5555', '92': '#55FF55', '93': '#FFFF55',
+      '94': '#5555FF', '95': '#FF55FF', '96': '#55FFFF', '97': '#FFFFFF',
+    };
+
+    const ansiBgColors = {
+      '40': '#000000', '41': '#AA0000', '42': '#00AA00', '43': '#AA00AA',
+      '44': '#0000AA', '45': '#AA00AA', '46': '#00AAAA', '47': '#AAAAAA',
+    };
+
+    function parseAnsi(text) {
+      // First handle Minecraft § codes
+      text = text.replace(/§([0-9a-fklmnor])/gi, (match, code) => {
+        const c = code.toLowerCase();
+        if (c === 'r') return '</span>';
+        if (['l', 'n', 'o', 'm'].includes(c)) return '</span>';
+        const color = ansiColors[c];
+        if (color) return `<span style="color:${color}">`;
+        return '';
+      });
+
+      // Then handle ANSI escape codes
+      text = text.replace(/\x1b\[[0-9;]*m/g, (match) => {
+        const codes = match.slice(2, -1).split(';');
+        let html = '';
+        
+        for (const code of codes) {
+          const c = parseInt(code) || 0;
+          if (c === 0) {
+            html += '</span>';
+          } else if (c >= 30 && c <= 37) {
+            html += `<span style="color:${ansiColors[c]}">`;
+          } else if (c >= 90 && c <= 97) {
+            html += `<span style="color:${ansiColors[c]}">`;
+          } else if (c >= 40 && c <= 47) {
+            html += `<span style="background-color:${ansiBgColors[c]}">`;
+          } else if (c === 1) {
+            html += `<span style="font-weight:bold">`;
+          } else if (c === 3) {
+            html += `<span style="font-style:italic">`;
+          } else if (c === 4) {
+            html += `<span style="text-decoration:underline">`;
+          } else if (c === 9) {
+            html += `<span style="text-decoration:line-through">`;
+          }
+        }
+        return html;
+      });
+
+      return text;
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function formatLogHtml(rawMsg) {
+      const escaped = escapeHtml(rawMsg);
+      return parseAnsi(escaped);
+    }
+
+    function nowHHMMSS() {
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function isMcUsername(name) {
+      return /^[A-Za-z0-9_]{1,16}$/.test(String(name || "").trim());
+    }
+
+    function extractPlayerNameFromChat(rawMsg) {
+      const s = String(rawMsg ?? "");
+      let m = s.match(/<\s*([^>]{1,32})\s*>/);
+      if (m && m[1]) {
+        const n = m[1].trim();
+        if (isMcUsername(n)) return n;
+      }
+      m = s.match(/\]\s*([A-Za-z0-9_]{1,16})\s*:\s+/);
+      if (m && m[1] && isMcUsername(m[1])) return m[1].trim();
+      m = s.match(/^([A-Za-z0-9_]{1,16})\s*(?:»|:)\s+/);
+      if (m && m[1] && isMcUsername(m[1])) return m[1].trim();
+      return "";
+    }
+
+    // WebSocket connection
+    function connectWS() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onopen = () => {
+        document.getElementById('connectionStatus').className = 'status-badge status-connected';
+        document.getElementById('connectionStatus').textContent = 'Connected';
+        loadConfig();
+      };
+
+      ws.onclose = () => {
+        document.getElementById('connectionStatus').className = 'status-badge status-disconnected';
+        document.getElementById('connectionStatus').textContent = 'Disconnected';
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = setTimeout(connectWS, 3000);
+      };
+
+      ws.onerror = () => {
+        document.getElementById('connectionStatus').className = 'status-badge status-connecting';
+        document.getElementById('connectionStatus').textContent = 'Connecting...';
+      };
+
+      ws.onmessage = (event) => {
+        const { channel, data } = JSON.parse(event.data);
+        if (channel === 'log') {
+          addLog(data.user, data.msg, data.player, data.server);
+        }
+      };
+    }
+
+    // API calls
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/config');
+        CFG = await res.json();
+        renderUI();
+      } catch (e) {
+        console.error('Failed to load config:', e);
+      }
+    }
+
+    async function saveConfig() {
+      try {
+        updateCfgFromInputs();
+        
+        // Update selectedBots from UI state
+        CFG.servers.smp.selectedBots = Array.from(UI_SMP);
+        CFG.servers.sky.selectedBots = Array.from(UI_SKY);
+        
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(CFG)
+        });
+        showNotification('✅ Đã lưu cấu hình!');
+      } catch (e) {
+        console.error('Failed to save config:', e);
+      }
+    }
+
+    async function runAll() {
+      try {
+        updateCfgFromInputs();
+        await fetch('/api/run-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cfg: CFG, botCmdMap: buildBotCmdMap() })
+        });
+        showNotification('🚀 Đã khởi động tất cả bot!');
+      } catch (e) {
+        console.error('Failed to run:', e);
+      }
+    }
+
+    async function runServer(serverKey) {
+      try {
+        updateCfgFromInputs();
+        CFG.servers[serverKey].selectedBots = serverKey === "smp" ? Array.from(UI_SMP) : Array.from(UI_SKY);
+        await fetch('/api/run-server', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverKey, cfg: CFG, botCmdMap: buildBotCmdMap() })
+        });
+        showNotification(`🚀 Đã khởi động ${serverKey.toUpperCase()}!`);
+      } catch (e) {
+        console.error('Failed to run server:', e);
+      }
+    }
+
+    async function stopAll() {
+      try {
+        await fetch('/api/stop-all', { method: 'POST' });
+        showNotification('⛔ Đã dừng tất cả bot!');
+      } catch (e) {
+        console.error('Failed to stop:', e);
+      }
+    }
+
+    async function stopServer(serverKey) {
+      try {
+        const names = serverKey === "smp" ? Array.from(UI_SMP) : Array.from(UI_SKY);
+        await fetch('/api/stop-selected', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ names })
+        });
+        showNotification(`⛔ Đã dừng ${serverKey.toUpperCase()}!`);
+      } catch (e) {
+        console.error('Failed to stop server:', e);
+      }
+    }
+
+    async function toggleAutoCmd(enabled) {
+      try {
+        await fetch('/api/toggle-autocmd', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled })
+        });
+      } catch (e) {
+        console.error('Failed to toggle autocmd:', e);
+      }
+    }
+
+    async function sendChat(message) {
+      if (!message.trim()) return;
+      try {
+        await fetch('/api/bot/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        
+        chatHistory.push(message);
+        if (chatHistory.length > 200) chatHistory.shift();
+        historyIndex = chatHistory.length;
+        
+        document.getElementById('chatInput').value = '';
+      } catch (e) {
+        console.error('Failed to send chat:', e);
+      }
+    }
+
+    // UI Functions
+    function setVal(id, v) {
+      const el = document.getElementById(id);
+      if (el) el.value = String(v ?? "");
+    }
+
+    function getVal(id) {
+      return document.getElementById(id)?.value ?? "";
+    }
+
+    function numOr(oldVal, raw, opts = {}) {
+      const { int = true, min = null } = opts;
+      let n = int ? parseInt(raw) : Number(raw);
+      if (!Number.isFinite(n)) return oldVal;
+      if (min !== null && n < min) n = min;
+      return n;
+    }
+
+    function normalizeMcVersion(v) {
+      const s = String(v ?? "").trim();
+      if (!s || s.toLowerCase() === "auto") return "";
+      return s;
+    }
+
+    function updateCfgFromInputs() {
+      CFG.ip = getVal("ip").trim() || CFG.ip;
+      CFG.port = numOr(CFG.port, getVal("port"), { int: true, min: 1 });
+      CFG.mcVersion = normalizeMcVersion(getVal("mcVersion"));
+      CFG.preConnectDelay = numOr(CFG.preConnectDelay, getVal("preConnectDelay"), { int: false, min: 0 });
+      CFG.loginDelay = numOr(CFG.loginDelay, getVal("loginDelay"), { int: true, min: 0 });
+      CFG.autoCmdDelay = numOr(CFG.autoCmdDelay, getVal("autoCmdDelay"), { int: false, min: 0.1 });
+      CFG.cmdDelay = CFG.autoCmdDelay;
+      CFG.firstCmdDelay = numOr(CFG.firstCmdDelay, getVal("firstCmdDelay"), { int: false, min: 0 });
+      CFG.minOn = numOr(CFG.minOn, getVal("minOn"), { int: true, min: 1 });
+      CFG.maxOn = numOr(CFG.maxOn, getVal("maxOn"), { int: true, min: 1 });
+      CFG.minOff = numOr(CFG.minOff, getVal("minOff"), { int: true, min: 0 });
+      CFG.maxOff = numOr(CFG.maxOff, getVal("maxOff"), { int: true, min: 0 });
+
+      if (CFG.minOn > CFG.maxOn) [CFG.minOn, CFG.maxOn] = [CFG.maxOn, CFG.minOn];
+      if (CFG.minOff > CFG.maxOff) [CFG.minOff, CFG.maxOff] = [CFG.maxOff, CFG.minOff];
+    }
+
+    function renderUI() {
+      setVal("ip", CFG.ip);
+      setVal("port", CFG.port);
+      setVal("mcVersion", CFG.mcVersion);
+      setVal("preConnectDelay", CFG.preConnectDelay);
+      setVal("loginDelay", CFG.loginDelay);
+      setVal("autoCmdDelay", CFG.autoCmdDelay);
+      setVal("firstCmdDelay", CFG.firstCmdDelay);
+      setVal("minOn", CFG.minOn);
+      setVal("maxOn", CFG.maxOn);
+      setVal("minOff", CFG.minOff);
+      setVal("maxOff", CFG.maxOff);
+
+      setAutoCmdBtn(CFG.autoCmdEnabled);
+
+      UI_SMP = new Set(CFG.servers.smp.selectedBots);
+      UI_SKY = new Set(CFG.servers.sky.selectedBots);
+
+      renderSmpBots();
+      renderSkyBots();
+      renderSmpCmds();
+      renderSkyCmds();
+    }
+
+    function setAutoCmdBtn(enabled) {
+      const btn = document.getElementById("btnToggleAutoCmd");
+      if (!btn) return;
+      if (enabled) {
+        btn.classList.remove("toggleOff");
+        btn.classList.add("toggleOn");
+        btn.textContent = "AutoCmd: BẬT";
+        CFG.autoCmdEnabled = true;
+      } else {
+        btn.classList.remove("toggleOn");
+        btn.classList.add("toggleOff");
+        btn.textContent = "AutoCmd: TẮT";
+        CFG.autoCmdEnabled = false;
+      }
+    }
+
+    function renderBotList(containerId, accounts, selectedSet, onToggle, onDelete) {
+      const list = document.getElementById(containerId);
+      if (!list) return;
+      list.innerHTML = "";
+
+      accounts.forEach((name) => {
+        const row = document.createElement("div");
+        row.className = "row";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "chk";
+        cb.checked = selectedSet.has(name);
+        cb.onchange = () => onToggle(name, cb.checked);
+
+        const label = document.createElement("span");
+        label.textContent = name;
+        label.title = name;
+
+        const del = document.createElement("button");
+        del.textContent = "Xóa";
+        del.onclick = () => onDelete(name);
+        del.style.padding = "6px 10px";
+
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(del);
+        list.appendChild(row);
+      });
+    }
+
+    function renderSmpBots() {
+      renderBotList("botListSmp", CFG.servers.smp.accounts, UI_SMP,
+        (name, checked) => {
+          if (checked) UI_SMP.add(name);
+          else UI_SMP.delete(name);
+          saveConfig();
+        },
+        (name) => {
+          CFG.servers.smp.accounts = CFG.servers.smp.accounts.filter((x) => x !== name);
+          UI_SMP.delete(name);
+          saveConfig();
+          renderSmpBots();
+        }
+      );
+    }
+
+    function renderSkyBots() {
+      renderBotList("botListSky", CFG.servers.sky.accounts, UI_SKY,
+        (name, checked) => {
+          if (checked) UI_SKY.add(name);
+          else UI_SKY.delete(name);
+          saveConfig();
+        },
+        (name) => {
+          CFG.servers.sky.accounts = CFG.servers.sky.accounts.filter((x) => x !== name);
+          UI_SKY.delete(name);
+          saveConfig();
+          renderSkyBots();
+        }
+      );
+    }
+
+    function renderCmdList(containerId, cmds, onDeleteAt) {
+      const list = document.getElementById(containerId);
+      if (!list) return;
+      list.innerHTML = "";
+
+      cmds.forEach((cmd, idx) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.style.gridTemplateColumns = "1fr 74px";
+
+        const label = document.createElement("span");
+        label.textContent = cmd;
+        label.title = cmd;
+
+        const del = document.createElement("button");
+        del.textContent = "Xóa";
+        del.onclick = () => onDeleteAt(idx);
+        del.style.padding = "6px 10px";
+
+        row.appendChild(label);
+        row.appendChild(del);
+        list.appendChild(row);
+      });
+    }
+
+    function renderSmpCmds() {
+      renderCmdList("cmdListSmp", CFG.servers.smp.autoCmds, (idx) => {
+        CFG.servers.smp.autoCmds.splice(idx, 1);
+        saveConfig();
+        renderSmpCmds();
+      });
+    }
+
+    function renderSkyCmds() {
+      renderCmdList("cmdListSky", CFG.servers.sky.autoCmds, (idx) => {
+        CFG.servers.sky.autoCmds.splice(idx, 1);
+        saveConfig();
+        renderSkyCmds();
+      });
+    }
+
+    function addBotTo(serverKey) {
+      const inputId = serverKey === "smp" ? "botNameSmp" : "botNameSky";
+      const input = document.getElementById(inputId);
+      const name = (input?.value || "").trim();
+      if (!name) return;
+
+      const all = new Set([...CFG.servers.smp.accounts, ...CFG.servers.sky.accounts]);
+      if (all.has(name)) {
+        alert("Tên bot đã tồn tại!");
+        return;
+      }
+
+      CFG.servers[serverKey].accounts.push(name);
+      if (serverKey === "smp") UI_SMP.add(name);
+      else UI_SKY.add(name);
+
+      if (input) input.value = "";
+      saveConfig();
+      if (serverKey === "smp") renderSmpBots();
+      else renderSkyBots();
+    }
+
+    function addCmdTo(serverKey) {
+      const inputId = serverKey === "smp" ? "cmdTextSmp" : "cmdTextSky";
+      const input = document.getElementById(inputId);
+      const cmd = (input?.value || "").trim();
+      if (!cmd) return;
+
+      CFG.servers[serverKey].autoCmds.push(cmd);
+      if (input) input.value = "";
+      saveConfig();
+      if (serverKey === "smp") renderSmpCmds();
+      else renderSkyCmds();
+    }
+
+    function selectAll(serverKey) {
+      if (serverKey === "smp") UI_SMP = new Set(CFG.servers.smp.accounts);
+      else UI_SKY = new Set(CFG.servers.sky.accounts);
+      saveConfig();
+      if (serverKey === "smp") renderSmpBots();
+      else renderSkyBots();
+    }
+
+    function unselectAll(serverKey) {
+      if (serverKey === "smp") UI_SMP.clear();
+      else UI_SKY.clear();
+      saveConfig();
+      if (serverKey === "smp") renderSmpBots();
+      else renderSkyBots();
+    }
+
+    function buildBotCmdMap() {
+      const botCmdMap = {};
+      CFG.servers.smp.selectedBots.forEach((name) => {
+        botCmdMap[name] = [...CFG.servers.smp.autoCmds];
+      });
+      CFG.servers.sky.selectedBots.forEach((name) => {
+        botCmdMap[name] = [...CFG.servers.sky.autoCmds];
+      });
+      return botCmdMap;
+    }
+
+    function addLog(user, msg, player, server) {
+      const box = document.getElementById("logBox");
+      if (!box) return;
+
+      const botName = String(user || "unknown");
+      const playerFromMain = String(player || "").trim();
+      let playerName = playerFromMain && isMcUsername(playerFromMain)
+        ? playerFromMain
+        : extractPlayerNameFromChat(msg);
+      
+      const isPlayerChat = !!playerName;
+      const time = nowHHMMSS();
+
+      const serverTag = server === "smp"
+        ? `<span style="color:#60a5fa"><b>[SMP]</b></span>`
+        : server === "sky"
+        ? `<span style="color:#34d399"><b>[SKY]</b></span>`
+        : `<span style="color:#64748b"><b>[?]</b></span>`;
+
+      const botTag = `<span style="color:#a78bfa"><b>[BOT:${escapeHtml(botName)}]</b></span>`;
+      const playerTag = isPlayerChat
+        ? ` <span style="color:#facc15"><b>[${escapeHtml(playerName)}]</b></span>`
+        : "";
+
+      const line = document.createElement("div");
+      line.className = "logLine";
+      line.innerHTML =
+        `<span style="color:#64748b;font-size:11px;">[${time}]</span> ` +
+        `${serverTag} ` +
+        `${botTag}` +
+        `${playerTag}` +
+        ` <span style="color:#64748b;">:</span> ` +
+        `<span style="color:#e5e7eb;">${formatLogHtml(msg)}</span>`;
+
+      box.appendChild(line);
+
+      // Auto scroll if pinned
+      const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
+      isPinnedToBottom = dist <= 40;
+      if (isPinnedToBottom) box.scrollTop = box.scrollHeight;
+
+      // Keep only last 1200 lines
+      while (box.children.length > 1200) {
+        box.removeChild(box.firstChild);
+      }
+    }
+
+    function showNotification(msg) {
+      const el = document.createElement("div");
+      el.style.cssText = "position:fixed;top:20px;right:20px;background:rgba(34,197,94,.9);color:#fff;padding:12px 20px;border-radius:10px;z-index:9999;animation:fadeIn 0.3s;";
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => {
+        el.style.animation = "fadeOut 0.3s";
+        setTimeout(() => el.remove(), 300);
+      }, 2000);
+    }
+
+    // Add CSS animations
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes fadeIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+      @keyframes fadeOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(-10px); } }
+    `;
+    document.head.appendChild(style);
+
+    // Event Listeners
+    document.addEventListener("DOMContentLoaded", () => {
+      connectWS();
+
+      // Server config
+      document.getElementById("btnToggleAutoCmd").onclick = () => {
+        setAutoCmdBtn(!CFG.autoCmdEnabled);
+        toggleAutoCmd(CFG.autoCmdEnabled);
+        saveConfig();
+      };
+
+      document.getElementById("btnRunAll").onclick = runAll;
+      document.getElementById("btnStopAll").onclick = stopAll;
+      document.getElementById("btnClearLog").onclick = () => {
+        document.getElementById("logBox").innerHTML = "";
+      };
+
+      // SMP
+      document.getElementById("btnAddBotSmp").onclick = () => addBotTo("smp");
+      document.getElementById("btnSelectAllSmp").onclick = () => selectAll("smp");
+      document.getElementById("btnUnselectAllSmp").onclick = () => unselectAll("smp");
+      document.getElementById("btnRunSmp").onclick = () => runServer("smp");
+      document.getElementById("btnStopSmp").onclick = () => stopServer("smp");
+      document.getElementById("btnAddCmdSmp").onclick = () => addCmdTo("smp");
+
+      // Sky
+      document.getElementById("btnAddBotSky").onclick = () => addBotTo("sky");
+      document.getElementById("btnSelectAllSky").onclick = () => selectAll("sky");
+      document.getElementById("btnUnselectAllSky").onclick = () => unselectAll("sky");
+      document.getElementById("btnRunSky").onclick = () => runServer("sky");
+      document.getElementById("btnStopSky").onclick = () => stopServer("sky");
+      document.getElementById("btnAddCmdSky").onclick = () => addCmdTo("sky");
+
+      // Chat with history
+      document.getElementById("sendChatBtn").onclick = () => {
+        sendChat(document.getElementById("chatInput").value);
+      };
+      document.getElementById("chatInput").onkeydown = (e) => {
+        const input = e.target;
+
+        if (e.key === "Enter") {
+          sendChat(input.value);
+          e.preventDefault();
+          return;
+        }
+
+        if (e.key === "ArrowUp") {
+          if (chatHistory.length === 0) return;
+          historyIndex--;
+          if (historyIndex < 0) historyIndex = 0;
+          input.value = chatHistory[historyIndex] || "";
+          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+          e.preventDefault();
+          return;
+        }
+
+        if (e.key === "ArrowDown") {
+          if (chatHistory.length === 0) return;
+          historyIndex++;
+          if (historyIndex >= chatHistory.length) {
+            historyIndex = chatHistory.length;
+            input.value = "";
+          } else {
+            input.value = chatHistory[historyIndex] || "";
+          }
+          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+          e.preventDefault();
+          return;
+        }
+      };
+
+      // Enter key for adding bots/commands
+      document.getElementById("botNameSmp").onkeydown = (e) => { if (e.key === "Enter") addBotTo("smp"); };
+      document.getElementById("botNameSky").onkeydown = (e) => { if (e.key === "Enter") addBotTo("sky"); };
+      document.getElementById("cmdTextSmp").onkeydown = (e) => { if (e.key === "Enter") addCmdTo("smp"); };
+      document.getElementById("cmdTextSky").onkeydown = (e) => { if (e.key === "Enter") addCmdTo("sky"); };
+
+      // Auto scroll detection
+      const logBox = document.getElementById("logBox");
+      if (logBox) {
+        logBox.addEventListener("scroll", () => {
+          const threshold = 40;
+          const dist = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight;
+          isPinnedToBottom = dist <= threshold;
+        });
+      }
+
+      // Save on blur
+      const inputs = ["ip", "port", "mcVersion", "preConnectDelay", "loginDelay", "autoCmdDelay", "firstCmdDelay", "minOn", "maxOn", "minOff", "maxOff"];
+      inputs.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.onchange = saveConfig;
+          el.onblur = saveConfig;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
