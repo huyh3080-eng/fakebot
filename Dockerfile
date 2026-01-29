@@ -1,21 +1,11 @@
-FROM node:20-slim
+# Use full Node image - no apt-get needed (avoids DNS issues in build)
+FROM node
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-
-# Install dependencies (mineflayer / native modules may need build tools)
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        python3 \
-        make \
-        g++ \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
 
 # Install dependencies
 RUN npm ci --only=production
