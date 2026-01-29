@@ -6,11 +6,16 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (mineflayer needs some extra deps for node-xmpp)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install dependencies (mineflayer / native modules may need build tools)
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        python3 \
+        make \
+        g++ \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Install dependencies
 RUN npm ci --only=production
