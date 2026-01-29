@@ -656,6 +656,12 @@
       return "";
     }
 
+    // Base path cho API/WS khi chạy dưới /bot/ (Nginx)
+    const API_BASE = (() => {
+      const p = (window.location.pathname || '/').replace(/\/$/, '');
+      return p ? p + '/' : '';
+    })();
+
     // WebSocket connection (path có slash cuối để khớp Nginx location /bot/)
     function connectWS() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -692,7 +698,7 @@
     // API calls
     async function loadConfig() {
       try {
-        const res = await fetch('/api/config');
+        const res = await fetch(API_BASE + 'api/config');
         CFG = await res.json();
         renderUI();
       } catch (e) {
@@ -708,7 +714,7 @@
         CFG.servers.smp.selectedBots = Array.from(UI_SMP);
         CFG.servers.sky.selectedBots = Array.from(UI_SKY);
         
-        await fetch('/api/config', {
+        await fetch(API_BASE + 'api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(CFG)
@@ -722,7 +728,7 @@
     async function runAll() {
       try {
         updateCfgFromInputs();
-        await fetch('/api/run-all', {
+        await fetch(API_BASE + 'api/run-all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cfg: CFG, botCmdMap: buildBotCmdMap() })
@@ -737,7 +743,7 @@
       try {
         updateCfgFromInputs();
         CFG.servers[serverKey].selectedBots = serverKey === "smp" ? Array.from(UI_SMP) : Array.from(UI_SKY);
-        await fetch('/api/run-server', {
+        await fetch(API_BASE + 'api/run-server', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ serverKey, cfg: CFG, botCmdMap: buildBotCmdMap() })
@@ -750,7 +756,7 @@
 
     async function stopAll() {
       try {
-        await fetch('/api/stop-all', { method: 'POST' });
+        await fetch(API_BASE + 'api/stop-all', { method: 'POST' });
         showNotification('⛔ Đã dừng tất cả bot!');
       } catch (e) {
         console.error('Failed to stop:', e);
@@ -760,7 +766,7 @@
     async function stopServer(serverKey) {
       try {
         const names = serverKey === "smp" ? Array.from(UI_SMP) : Array.from(UI_SKY);
-        await fetch('/api/stop-selected', {
+        await fetch(API_BASE + 'api/stop-selected', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ names })
@@ -773,7 +779,7 @@
 
     async function toggleAutoCmd(enabled) {
       try {
-        await fetch('/api/toggle-autocmd', {
+        await fetch(API_BASE + 'api/toggle-autocmd', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled })
@@ -786,7 +792,7 @@
     async function sendChat(message) {
       if (!message.trim()) return;
       try {
-        await fetch('/api/bot/chat', {
+        await fetch(API_BASE + 'api/bot/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message })
