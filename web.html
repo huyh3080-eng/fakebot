@@ -656,10 +656,11 @@
       return "";
     }
 
-    // WebSocket connection
+    // WebSocket connection (dùng cùng path với trang để hoạt động qua Nginx /bot/)
     function connectWS() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${protocol}//${window.location.host}`);
+      const path = (window.location.pathname || '/').replace(/\/$/, '');
+      ws = new WebSocket(`${protocol}//${window.location.host}${path || ''}`);
 
       ws.onopen = () => {
         document.getElementById('connectionStatus').className = 'status-badge status-connected';
