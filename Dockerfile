@@ -1,19 +1,11 @@
 # Use full Node image - no apt-get needed (avoids DNS issues in build)
 FROM node
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY . /app
 
-# Install dependencies
-RUN npm ci --only=production
-
-# Copy application files
-COPY . .
-
-# Expose web port
+RUN npm install
 EXPOSE 3000
 
 # Environment
