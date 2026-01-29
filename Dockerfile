@@ -26,7 +26,7 @@ COPY . .
 
 # Cài dependencies (tạo node_modules sau cùng)
 RUN npm ci
-
+RUN npm i express
 EXPOSE 3000
 
 # Chạy web
