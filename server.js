@@ -480,6 +480,28 @@ function isMcUsername(name) {
   return /^[A-Za-z0-9_]{1,16}$/.test(String(name || "").trim());
 }
 
+function stripFormattingCodes(text) {
+  let s = String(text || "");
+  s = s.replace(/§[0-9A-FK-OR]/gi, "");
+  s = s.replace(/\x1b\[[0-9;]*m/g, "");
+  return s;
+}
+
+function extractNameFromDecoratedText(text) {
+  const s = stripFormattingCodes(text);
+  const patterns = [
+    /<\s*([A-Za-z0-9_]{1,16})\s*>/,
+    /^\s*(?:\[[^\]]+\]\s*)+([A-Za-z0-9_]{1,16})\s*(?:\u00BB|:)\s+/,
+    /\]\s*([A-Za-z0-9_]{1,16})\s*:\s+/,
+    /^([A-Za-z0-9_]{1,16})\s*(?:\u00BB|:)\s+/,
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (m && isMcUsername(m[1])) return m[1];
+  }
+  return "";
+}
+
 function extractPlainText(node) {
   if (node == null) return "";
   if (typeof node === "string") return node;
@@ -527,6 +549,8 @@ function extractPlayerFromJsonChat(chatNode) {
   for (const c of directNameCandidates) {
     const s = String(c || "").trim();
     if (isMcUsername(s)) return s;
+    const extracted = extractNameFromDecoratedText(s);
+    if (extracted) return extracted;
   }
 
   const visit = [];
@@ -546,9 +570,10 @@ function extractPlayerNameFromMessage(message, jsonMsg, sender) {
   const fromJson = extractPlayerFromJsonChat(jsonMsg);
   if (fromJson) return fromJson;
 
-  const msg = String(message || "");
+  const msg = stripFormattingCodes(message);
   const patterns = [
     /<\s*([A-Za-z0-9_]{1,16})\s*>/,
+    /^\s*(?:\[[^\]]+\]\s*)+([A-Za-z0-9_]{1,16})\s*(?:\u00BB|:)\s+/,
     /\]\s*([A-Za-z0-9_]{1,16})\s*:\s+/,
     /^([A-Za-z0-9_]{1,16})\s*(?:\u00BB|:)\s+/,
     /\[[^\]]*?\]\s*([A-Za-z0-9_]{1,16})\s*(?:\u00BB|:)\s+/,
