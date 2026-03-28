@@ -6,18 +6,6 @@ const path = require("path");
 const crypto = require("crypto");
 const yaml = require("js-yaml");
 const mineflayer = require("mineflayer");
-let setupAiPanelExtension = () => ({
-  getPublicBots: () => [],
-  getBridgeSnapshot: () => [],
-  processPluginChat: async () => {
-    throw new Error("AI bridge unavailable");
-  },
-});
-try {
-  ({ setupAiPanelExtension } = require("./ai-bridge"));
-} catch (err) {
-  console.warn("[AI Bridge] Disabled:", err?.message || String(err));
-}
 
 const app = express();
 const server = http.createServer(app);
@@ -230,8 +218,6 @@ const FAST_LOGIN_COOLDOWN_BASE_MS = 45000;
 const FAST_LOGIN_COOLDOWN_MAX_MS = 300000;
 const LOGIN_INFLIGHT_RETRY_MIN_MS = 2000;
 const LOGIN_INFLIGHT_RETRY_MAX_MS = 4500;
-const AI_TRIGGER_DEDUPE_MS = 4000;
-const aiTriggerDedupeMap = new Map();
 
 // WebSocket clients
 const clients = new Set();
@@ -261,14 +247,6 @@ function sendLogs(user, msg, player = "") {
   const server = botServerMap?.[user] || "";
   broadcast("log", { user, msg, server, player });
 }
-
-// Extension layer: panel-managed AI bots (stored in DB), bridged to plugin/legacy runtime.
-const aiBridgeExtension = setupAiPanelExtension({
-  app,
-  broadcast,
-  dataDir,
-  loginSalt: LOGIN_SALT,
-});
 
 function loadCfg() {
   try {
@@ -442,37 +420,11 @@ function extractPlayerNameFromMessage(message, jsonMsg, sender) {
   return "";
 }
 
-function cleanupAiTriggerDedupe(now = Date.now()) {
-  for (const [key, exp] of aiTriggerDedupeMap.entries()) {
-    if (exp <= now) aiTriggerDedupeMap.delete(key);
-  }
+async function maybeHandleAiChatTrigger() {
+  return;
 }
 
-function isDuplicateAiTrigger(signature) {
-  const now = Date.now();
-  cleanupAiTriggerDedupe(now);
-  const exp = aiTriggerDedupeMap.get(signature) || 0;
-  if (exp > now) return true;
-  aiTriggerDedupeMap.set(signature, now + AI_TRIGGER_DEDUPE_MS);
-  return false;
-}
-
-function extractLeadingMentionToken(message) {
-  const m = String(message || "").trim().match(/^@([A-Za-z0-9_]{1,16})\b/);
-  return m ? `@${String(m[1] || "").toLowerCase()}` : "";
-}
-
-function hasActiveBotName(name) {
-  const target = String(name || "").trim().toLowerCase();
-  if (!target) return false;
-  return Object.keys(activeBots).some((x) => String(x || "").toLowerCase() === target);
-}
-
-function getPrimaryResponderBotName() {
-  const names = Object.keys(activeBots).sort((a, b) => String(a).localeCompare(String(b)));
-  return names[0] || "";
-}
-
+/*
 async function maybeHandleAiChatTrigger({ listenerBotName, bot, message, player }) {
   try {
     if (!aiBridgeExtension || typeof aiBridgeExtension.processPluginChat !== "function") return;
@@ -539,6 +491,7 @@ async function maybeHandleAiChatTrigger({ listenerBotName, bot, message, player 
     sendLogs(listenerBotName, `§c[AI Error] ${err?.message || String(err)}`);
   }
 }
+*/
 
 function normalizeServerSlot(serverKey) {
   const key = String(serverKey || "smp").trim().toLowerCase();
@@ -785,7 +738,6 @@ function spawnBot(name, serverKey) {
       const msgStr = String(message ?? "");
       const player = extractPlayerNameFromMessage(msgStr, jsonMsg, packetSender);
       sendLogs(name, msgStr, player);
-      void maybeHandleAiChatTrigger({ listenerBotName: name, bot, message: msgStr, player });
     } catch {}
   });
 
