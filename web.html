@@ -867,6 +867,10 @@
         const res = await fetch((window.BASE_PATH || '') + '/api/config');
         let rawCfg = null;
         try { rawCfg = await res.json(); } catch (_) {}
+        if (!rawCfg || typeof rawCfg !== "object") {
+          showNotification("Không đọc được config từ server", "warn");
+          return;
+        }
         if (!res.ok || (rawCfg && rawCfg.ok === false)) {
           const msg = rawCfg?.message || "Phiên đăng nhập đã hết hạn";
           showNotification(msg, "warn");
@@ -1553,6 +1557,7 @@
 
     // Event Listeners
     document.addEventListener("DOMContentLoaded", () => {
+      loadConfig();
       connectWS();
 
       // Server config
