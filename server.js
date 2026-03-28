@@ -977,15 +977,17 @@ app.post("/api/run-all", (req, res) => {
   // Update servers from cfg
   if (cfg && cfg.servers) {
     if (cfg.servers.smp) {
-      CFG.servers.smp.accounts = cfg.servers.smp.accounts || CFG.servers.smp.accounts;
-      CFG.servers.smp.selectedBots = cfg.servers.smp.selectedBots || [];
-      CFG.servers.smp.autoCmds = cfg.servers.smp.autoCmds || CFG.servers.smp.autoCmds;
+      CFG.servers.smp.accounts = mergeArrayField(CFG.servers.smp.accounts, cfg.servers.smp, "accounts");
+      CFG.servers.smp.selectedBots = mergeArrayField(CFG.servers.smp.selectedBots, cfg.servers.smp, "selectedBots");
+      CFG.servers.smp.autoCmds = mergeArrayField(CFG.servers.smp.autoCmds, cfg.servers.smp, "autoCmds");
     }
     if (cfg.servers.sky) {
-      CFG.servers.sky.accounts = cfg.servers.sky.accounts || CFG.servers.sky.accounts;
-      CFG.servers.sky.selectedBots = cfg.servers.sky.selectedBots || [];
-      CFG.servers.sky.autoCmds = cfg.servers.sky.autoCmds || CFG.servers.sky.autoCmds;
+      CFG.servers.sky.accounts = mergeArrayField(CFG.servers.sky.accounts, cfg.servers.sky, "accounts");
+      CFG.servers.sky.selectedBots = mergeArrayField(CFG.servers.sky.selectedBots, cfg.servers.sky, "selectedBots");
+      CFG.servers.sky.autoCmds = mergeArrayField(CFG.servers.sky.autoCmds, cfg.servers.sky, "autoCmds");
     }
+    normalizeServersInCfg();
+    syncLegacyAliasesFromServers();
   }
   
   // Update other settings
@@ -1016,9 +1018,11 @@ app.post("/api/run-server", (req, res) => {
   // Update servers from cfg
   if (cfg && cfg.servers) {
     if (cfg.servers[serverKey]) {
-      CFG.servers[serverKey].accounts = cfg.servers[serverKey].accounts || CFG.servers[serverKey].accounts;
-      CFG.servers[serverKey].selectedBots = cfg.servers[serverKey].selectedBots || [];
-      CFG.servers[serverKey].autoCmds = cfg.servers[serverKey].autoCmds || CFG.servers[serverKey].autoCmds;
+      CFG.servers[serverKey].accounts = mergeArrayField(CFG.servers[serverKey].accounts, cfg.servers[serverKey], "accounts");
+      CFG.servers[serverKey].selectedBots = mergeArrayField(CFG.servers[serverKey].selectedBots, cfg.servers[serverKey], "selectedBots");
+      CFG.servers[serverKey].autoCmds = mergeArrayField(CFG.servers[serverKey].autoCmds, cfg.servers[serverKey], "autoCmds");
+      normalizeServersInCfg();
+      syncLegacyAliasesFromServers();
     }
   }
   

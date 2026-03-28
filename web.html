@@ -888,6 +888,8 @@
         // Update selectedBots from UI state
         CFG.servers.smp.selectedBots = Array.from(UI_SMP);
         CFG.servers.sky.selectedBots = Array.from(UI_SKY);
+        CFG.servers.smp.accounts = uniqueBotNames([...(CFG.servers.smp.accounts || []), ...CFG.servers.smp.selectedBots]);
+        CFG.servers.sky.accounts = uniqueBotNames([...(CFG.servers.sky.accounts || []), ...CFG.servers.sky.selectedBots]);
         
         await fetch((window.BASE_PATH || '') + '/api/config', {
           method: 'POST',
@@ -1343,7 +1345,9 @@
     }
 
     function renderSmpBots() {
-      renderBotList("botListSmp", CFG.servers.smp.accounts, UI_SMP,
+      const names = uniqueBotNames([...(CFG.servers.smp.accounts || []), ...(CFG.servers.smp.selectedBots || [])]);
+      CFG.servers.smp.accounts = names;
+      renderBotList("botListSmp", names, UI_SMP,
         (name, checked) => {
           if (checked) UI_SMP.add(name);
           else UI_SMP.delete(name);
@@ -1359,7 +1363,9 @@
     }
 
     function renderSkyBots() {
-      renderBotList("botListSky", CFG.servers.sky.accounts, UI_SKY,
+      const names = uniqueBotNames([...(CFG.servers.sky.accounts || []), ...(CFG.servers.sky.selectedBots || [])]);
+      CFG.servers.sky.accounts = names;
+      renderBotList("botListSky", names, UI_SKY,
         (name, checked) => {
           if (checked) UI_SKY.add(name);
           else UI_SKY.delete(name);
