@@ -453,10 +453,15 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
-function calcInitialJoinBaseDelayMs(cfg) {
+function calcFirstJoinFixedDelayMs(cfg) {
   const MIN_FIRST_CONNECT_MS = 5000;
   const fixedPreDelaySec = Math.max(0, Number(cfg?.preConnectDelay) || 0);
-  const fixedPreDelayMs = Math.max(MIN_FIRST_CONNECT_MS, Math.round(fixedPreDelaySec * 1000));
+  return Math.max(MIN_FIRST_CONNECT_MS, Math.round(fixedPreDelaySec * 1000));
+}
+
+function calcInitialJoinBaseDelayMs(cfg) {
+  const MIN_FIRST_CONNECT_MS = 5000;
+  const fixedPreDelayMs = calcFirstJoinFixedDelayMs(cfg);
 
   const randomMinSec = Math.max(0, Number(cfg?.firstJoinRandomMinDelay) || 0);
   const randomMaxSecRaw = Number(cfg?.firstJoinRandomMaxDelay);
@@ -1028,14 +1033,14 @@ function runAllBots(botCmdMapFromApi) {
   CFG.servers.smp.selectedBots.forEach((name, i) => {
     botServerMap[name] = "smp";
     sendLogs(name, `§a⏳ Đang khởi động bot SMP...`);
-    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG);
+    const initialDelayMs = i === 0 ? calcFirstJoinFixedDelayMs(CFG) : calcInitialJoinBaseDelayMs(CFG);
     scheduleBotSpawn(name, "smp", initialDelayMs + i * loginDelayMs);
   });
   const smpCount = CFG.servers.smp.selectedBots.length;
   CFG.servers.sky.selectedBots.forEach((name, i) => {
     botServerMap[name] = "sky";
     sendLogs(name, `§a⏳ Đang khởi động bot Skyblock...`);
-    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG);
+    const initialDelayMs = i === 0 ? calcFirstJoinFixedDelayMs(CFG) : calcInitialJoinBaseDelayMs(CFG);
     scheduleBotSpawn(name, "sky", initialDelayMs + (smpCount + i) * loginDelayMs);
   });
 
@@ -1131,7 +1136,7 @@ app.post("/api/run-server", (req, res) => {
     desiredBots.add(name);
     botServerMap[name] = serverKey;
     sendLogs(name, `§a⏳ Đang khởi động bot ${serverKey.toUpperCase()}...`);
-    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG);
+    const initialDelayMs = i === 0 ? calcFirstJoinFixedDelayMs(CFG) : calcInitialJoinBaseDelayMs(CFG);
     scheduleBotSpawn(name, serverKey, initialDelayMs + i * loginDelayMs);
   });
 
