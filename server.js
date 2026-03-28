@@ -248,6 +248,13 @@ function sendLogs(user, msg, player = "") {
   broadcast("log", { user, msg, server, player });
 }
 
+function syncLegacyAliasesFromServers() {
+  const smp = CFG?.servers?.smp || { accounts: [], selectedBots: [], autoCmds: [] };
+  CFG.accounts = Array.isArray(smp.accounts) ? [...smp.accounts] : [];
+  CFG.selectedBots = Array.isArray(smp.selectedBots) ? [...smp.selectedBots] : [];
+  CFG.autoCmds = Array.isArray(smp.autoCmds) ? [...smp.autoCmds] : [];
+}
+
 function loadCfg() {
   try {
     if (fs.existsSync(yamlPath)) {
@@ -267,7 +274,20 @@ function loadCfg() {
             autoCmds: raw.servers.sky?.autoCmds || []
           }
         };
+      } else {
+        // Backward compatibility: legacy root format (accounts/selectedBots/autoCmds)
+        const legacyAccounts = Array.isArray(raw.accounts) ? raw.accounts : [];
+        const legacySelectedBots = Array.isArray(raw.selectedBots) ? raw.selectedBots : [];
+        const legacyAutoCmds = Array.isArray(raw.autoCmds) ? raw.autoCmds : [];
+        if (legacyAccounts.length || legacySelectedBots.length || legacyAutoCmds.length) {
+          CFG.servers.smp = {
+            accounts: legacyAccounts,
+            selectedBots: legacySelectedBots,
+            autoCmds: legacyAutoCmds
+          };
+        }
       }
+      syncLegacyAliasesFromServers();
       
       // Load other config fields
       CFG.ip = raw.ip || CFG.ip;
@@ -291,6 +311,8 @@ function loadCfg() {
 
 function saveCfg() {
   try {
+    syncLegacyAliasesFromServers();
+
     // Build config object for saving
     const configToSave = {
       ip: CFG.ip,
@@ -306,6 +328,10 @@ function saveCfg() {
       minOff: CFG.minOff,
       maxOff: CFG.maxOff,
       autoStartOnBoot: CFG.autoStartOnBoot,
+      // Keep legacy keys for full backward compatibility with old data.yml clients
+      accounts: CFG.accounts,
+      selectedBots: CFG.selectedBots,
+      autoCmds: CFG.autoCmds,
       servers: {
         smp: {
           accounts: CFG.servers.smp.accounts,
@@ -834,7 +860,13 @@ app.post("/api/config", (req, res) => {
       CFG.servers.sky.selectedBots = newCfg.servers.sky.selectedBots || [];
       CFG.servers.sky.autoCmds = newCfg.servers.sky.autoCmds || [];
     }
+  } else {
+    // Backward compatibility: accept legacy payload without servers.smp/sky
+    if (Array.isArray(newCfg.accounts)) CFG.servers.smp.accounts = newCfg.accounts;
+    if (Array.isArray(newCfg.selectedBots)) CFG.servers.smp.selectedBots = newCfg.selectedBots;
+    if (Array.isArray(newCfg.autoCmds)) CFG.servers.smp.autoCmds = newCfg.autoCmds;
   }
+  syncLegacyAliasesFromServers();
   
   // Update other fields
   CFG.ip = newCfg.ip || CFG.ip;
