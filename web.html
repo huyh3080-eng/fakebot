@@ -644,15 +644,7 @@
 
   <script>
     window.BASE_PATH = "__BASE_PATH__"; // Server thay bằng base path (vd /loginbot) khi chạy sau proxy
-    // Đóng tab/trang hoặc thoát web -> gửi logout để xóa phiên trên server -> vào lại phải login, không vào /bot trực tiếp được
-    (function () {
-      function logoutOnLeave() {
-        var url = (window.BASE_PATH || '') + '/api/logout';
-        navigator.sendBeacon(url, '');
-      }
-      window.addEventListener('pagehide', logoutOnLeave);
-      window.addEventListener('beforeunload', logoutOnLeave);
-    })();
+    // Keep session across page refresh to avoid losing panel state after F5.
     // Configuration
     let CFG = {
       ip: "localhost",
