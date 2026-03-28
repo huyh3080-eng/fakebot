@@ -6,7 +6,18 @@ const path = require("path");
 const crypto = require("crypto");
 const yaml = require("js-yaml");
 const mineflayer = require("mineflayer");
-const { setupAiPanelExtension } = require("./ai-bridge");
+let setupAiPanelExtension = () => ({
+  getPublicBots: () => [],
+  getBridgeSnapshot: () => [],
+  processPluginChat: async () => {
+    throw new Error("AI bridge unavailable");
+  },
+});
+try {
+  ({ setupAiPanelExtension } = require("./ai-bridge"));
+} catch (err) {
+  console.warn("[AI Bridge] Disabled:", err?.message || String(err));
+}
 
 const app = express();
 const server = http.createServer(app);
