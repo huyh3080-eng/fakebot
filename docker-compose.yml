@@ -1,0 +1,20 @@
+# Oceandeep Bot Panel - Chạy bản web bằng Docker trên Debian
+# Dùng: docker compose up -d
+# Truy cập: https://cp.oceandeepsmc.top/bot (trang chạy bot)
+
+services:
+  botpanel:
+    build: .
+    container_name: oceandeep-bot-panel
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - CANONICAL_BASE_URL=https://cp.oceandeepsmc.top
+      - DATA_DIR=/data
+    volumes:
+      - botpanel-data:/data
+
+volumes:
+  botpanel-data:

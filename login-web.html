@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="base-path" content="__BASE_PATH__" />
+  <title>Đăng nhập - OCEANDEEPSMC</title>
+  <style>
+    :root {
+      --bg: #070b16;
+      --border: rgba(148,163,184,.16);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,.18), transparent 55%),
+                  radial-gradient(900px 500px at 100% 30%, rgba(34,197,94,.14), transparent 55%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 380px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    .card h1 {
+      margin: 0 0 8px 0;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card .sub {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+    .field {
+      margin-bottom: 16px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(4, 10, 25, .6);
+      color: var(--text);
+      font-size: 15px;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      margin-top: 8px;
+      border: none;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .err {
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 10px;
+      min-height: 18px;
+    }
+    .logo {
+      max-width: 48px;
+      height: auto;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1><img class="logo" src="__BASE_PATH__/logo.png" alt="" onerror="this.style.display='none'"> Đăng nhập Panel Bot</h1>
+    <p class="sub">OCEANDEEPSMC - Nhập tài khoản để vào panel</p>
+    <form id="f">
+      <div class="field">
+        <label for="user">Tài khoản</label>
+        <input type="text" id="user" name="user" placeholder="" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="pass">Mật khẩu</label>
+        <input type="password" id="pass" name="pass" placeholder="" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn" id="btn">Đăng nhập</button>
+      <p class="err" id="err" aria-live="polite"></p>
+    </form>
+  </div>
+  <script>
+    (function () {
+      var meta = document.querySelector('meta[name="base-path"]');
+      var base = (meta && meta.getAttribute('content')) || '';
+      var form = document.getElementById("f");
+      var errEl = document.getElementById("err");
+      var btn = document.getElementById("btn");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        errEl.textContent = "";
+        btn.disabled = true;
+        var user = (document.getElementById("user").value || "").trim();
+        var pass = document.getElementById("pass").value || "";
+        var apiUrl = base + "/api/login";
+        fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: user, pass: pass }),
+          credentials: "same-origin"
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.ok) {
+              var target = base + "/bot";
+              window.location.replace(target);
+              return;
+            }
+            errEl.textContent = (data && data.message) ? data.message : "Sai tài khoản hoặc mật khẩu.";
+            btn.disabled = false;
+          })
+          .catch(function () {
+            errEl.textContent = "Lỗi kết nối. Thử lại.";
+            btn.disabled = false;
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

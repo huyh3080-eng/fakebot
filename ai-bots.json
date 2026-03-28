@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "bots": [
+    {
+      "id": "fc51a655-7a44-48d9-9588-103267261e74",
+      "name": "AIPanelBot",
+      "type": "gemini",
+      "apiKeyEnc": "v1:cR/RU52eOrZvQzGj:cdJg3kpvC2UwT9/ckNhNLw==:+7+vHsWIpzkySQxtFpmEshlvc5E8l3pLNcaLMxurpEJJyNHl5lBi",
+      "prefix": "@ai",
+      "personality": "friendly",
+      "humanLikeLevel": 70,
+      "status": "on",
+      "createdAt": "2026-03-26T15:51:46.565Z",
+      "updatedAt": "2026-03-26T15:51:46.565Z",
+      "lastCheckStatus": "active",
+      "lastCheckAt": "2026-03-27T13:24:42.454Z",
+      "lastError": ""
+    }
+  ],
+  "usage": {
+    "fc51a655-7a44-48d9-9588-103267261e74": {
+      "tokenUsed": 0,
+      "requestCount": 0,
+      "requestsToday": 0,
+      "day": "2026-03-27",
+      "lastStatus": "active"
+    }
+  }
+}

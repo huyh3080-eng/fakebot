@@ -1,0 +1,50 @@
+ip: oceandeepsmc.com
+port: 25565
+mcVersion: 1.19.4
+autoCmdEnabled: true
+preConnectDelay: 6
+loginDelay: 8
+autoCmdDelay: 4
+firstCmdDelay: 4
+minOn: 5000
+maxOn: 20000
+minOff: 3000
+maxOff: 8000
+autoStartOnBoot: true
+servers:
+  smp:
+    accounts:
+      - hanachan
+      - kawaiiiiiii
+      - katchan
+      - shinichi
+      - taigaaaaaaa
+      - maiden
+      - huyenphong
+      - quanghuy
+      - khanhlinh
+      - ducminh
+      - nhatminh
+      - Itsuki
+      - Lucas
+      - Akira
+      - Ryan
+    selectedBots:
+      - hanachan
+      - kawaiiiiiii
+    autoCmds:
+      - /dn 123456
+      - /server smp
+      - /home nha
+  sky:
+    accounts:
+      - thuongnee
+      - TuTuDi_VN
+      - quanganco
+      - Summon
+      - DoanDiBom
+    selectedBots: []
+    autoCmds:
+      - /dn 12345678
+      - /server skyblock
+      - /is

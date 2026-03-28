@@ -1,0 +1,16 @@
+node_modules
+.git
+.gitignore
+dist
+dist2
+*.log
+.env
+.env.*
+!logo.png
+# Bỏ Electron / dev, chỉ cần file web
+index.js
+index.html
+login.html
+renderer.js
+build
+*.md

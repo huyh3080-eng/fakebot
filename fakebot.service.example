@@ -1,0 +1,29 @@
+# Systemd unit – chạy panel bot khi Debian khởi động / reboot
+# Cài đặt:
+#   1. Đổi /home/fakebot và debian thành đường dẫn + user thật của bạn
+#   2. sudo cp fakebot.service.example /etc/systemd/system/fakebot.service
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable fakebot
+#   5. sudo systemctl start fakebot
+# Sau khi reboot, app sẽ chạy và nếu data.yml có autoStartOnBoot: true + có bot được chọn thì sẽ tự chạy full bot (SMP + Skyblock).
+
+[Unit]
+Description=OCEANDEEPSMC Bot Panel
+After=network.target
+
+[Service]
+Type=simple
+User=debian
+WorkingDirectory=/home/fakebot
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=CANONICAL_BASE_URL=https://cp.oceandeepsmc.top
+# Tài khoản/mật khẩu panel (đặt trên server, không ghi vào repo): hash = sha256(LOGIN_SALT + mật_khẩu)
+# Environment=LOGIN_USER=admin
+# Environment=LOGIN_PASS_HASH=<hex hash>
+
+[Install]
+WantedBy=multi-user.target
