@@ -476,6 +476,22 @@
           </div>
         </div>
 
+        <div class="helpBox" style="margin-top:10px;">
+          <div class="label">Random Join Lần Đầu (giây)</div>
+          <div class="grid2" style="margin-top:8px;">
+            <div class="field">
+              <div class="label">Min Random Join</div>
+              <input id="firstJoinRandomMinDelay" placeholder="vd: 8" />
+              <div class="mini">Bot sẽ vào lần đầu ngẫu nhiên từ mốc này</div>
+            </div>
+            <div class="field">
+              <div class="label">Max Random Join</div>
+              <input id="firstJoinRandomMaxDelay" placeholder="vd: 20" />
+              <div class="mini">Nếu Min/Max = 0 thì dùng Connect Delay cũ</div>
+            </div>
+          </div>
+        </div>
+
         <div class="grid2" style="margin-top:10px;">
           <div class="field">
             <div class="label">AutoCmd Delay (giây)</div>
@@ -644,7 +660,15 @@
 
   <script>
     window.BASE_PATH = "__BASE_PATH__"; // Server thay bằng base path (vd /loginbot) khi chạy sau proxy
-    // Keep session across page refresh to avoid losing panel state after F5.
+    // Đóng/reload trang -> logout ngay, vào lại phải đăng nhập.
+    (function () {
+      function logoutOnLeave() {
+        var url = (window.BASE_PATH || '') + '/api/logout';
+        navigator.sendBeacon(url, '');
+      }
+      window.addEventListener('pagehide', logoutOnLeave);
+      window.addEventListener('beforeunload', logoutOnLeave);
+    })();
     // Configuration
     let CFG = {
       ip: "localhost",
@@ -653,6 +677,8 @@
       autoCmdEnabled: true,
       autoStartOnBoot: true,
       preConnectDelay: 0,
+      firstJoinRandomMinDelay: 0,
+      firstJoinRandomMaxDelay: 0,
       loginDelay: 1,
       autoCmdDelay: 1,
       firstCmdDelay: 1.5,
@@ -672,6 +698,9 @@
     let AI_USAGE_HISTORY = [];
     let ws = null;
     let reconnectTimeout = null;
+    let logPollTimer = null;
+    let lastLogId = 0;
+    let redirectingToLogin = false;
     let chatHistory = [];
     let historyIndex = -1;
     let isPinnedToBottom = true;
@@ -851,6 +880,11 @@
       ws.onmessage = (event) => {
         const { channel, data } = JSON.parse(event.data);
         if (channel === 'log') {
+          if (data && Number.isFinite(Number(data.id))) {
+            const logId = Number(data.id);
+            if (logId <= lastLogId) return;
+            lastLogId = logId;
+          }
           addLog(data.user, data.msg, data.player, data.server);
         } else if (channel === 'bot-status') {
           const el = document.getElementById('botStatusText');
@@ -862,6 +896,50 @@
     }
 
     // API calls
+    function redirectToLogin(message) {
+      if (redirectingToLogin) return;
+      redirectingToLogin = true;
+      showNotification(message || "Phiên đăng nhập đã hết hạn", "warn");
+      setTimeout(() => {
+        window.location.href = (window.BASE_PATH || "") + "/loginbot";
+      }, 400);
+    }
+
+    async function fetchLogsSnapshot() {
+      try {
+        const res = await fetch((window.BASE_PATH || "") + `/api/logs?since=${encodeURIComponent(lastLogId)}`);
+        let data = null;
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok || (data && data.ok === false)) {
+          if (res.status === 401 || data?.message) {
+            redirectToLogin(data?.message || "Chưa đăng nhập");
+          }
+          return;
+        }
+        const logs = Array.isArray(data?.logs) ? data.logs : [];
+        logs.forEach((entry) => {
+          const logId = Number(entry?.id || 0);
+          if (logId > 0) {
+            if (logId <= lastLogId) return;
+            lastLogId = logId;
+          }
+          addLog(entry.user, entry.msg, entry.player, entry.server);
+        });
+        const serverLastId = Number(data?.lastId || 0);
+        if (serverLastId > lastLogId) lastLogId = serverLastId;
+      } catch (e) {
+        // Ignore transient poll errors; WS still handles realtime when available.
+      }
+    }
+
+    function startLogPolling() {
+      if (logPollTimer) clearInterval(logPollTimer);
+      void fetchLogsSnapshot();
+      logPollTimer = setInterval(() => {
+        void fetchLogsSnapshot();
+      }, 1500);
+    }
+
     async function loadConfig() {
       try {
         const res = await fetch((window.BASE_PATH || '') + '/api/config');
@@ -873,10 +951,7 @@
         }
         if (!res.ok || (rawCfg && rawCfg.ok === false)) {
           const msg = rawCfg?.message || "Phiên đăng nhập đã hết hạn";
-          showNotification(msg, "warn");
-          setTimeout(() => {
-            window.location.href = (window.BASE_PATH || "") + "/loginbot";
-          }, 400);
+          redirectToLogin(msg);
           return;
         }
         CFG = normalizeCfgPayload(rawCfg);
@@ -1249,6 +1324,8 @@
       CFG.port = numOr(CFG.port, getVal("port"), { int: true, min: 1 });
       CFG.mcVersion = normalizeMcVersion(getVal("mcVersion"));
       CFG.preConnectDelay = numOr(CFG.preConnectDelay, getVal("preConnectDelay"), { int: false, min: 0 });
+      CFG.firstJoinRandomMinDelay = numOr(CFG.firstJoinRandomMinDelay, getVal("firstJoinRandomMinDelay"), { int: false, min: 0 });
+      CFG.firstJoinRandomMaxDelay = numOr(CFG.firstJoinRandomMaxDelay, getVal("firstJoinRandomMaxDelay"), { int: false, min: 0 });
       CFG.loginDelay = numOr(CFG.loginDelay, getVal("loginDelay"), { int: true, min: 0 });
       CFG.autoCmdDelay = numOr(CFG.autoCmdDelay, getVal("autoCmdDelay"), { int: false, min: 0.1 });
       CFG.cmdDelay = CFG.autoCmdDelay;
@@ -1260,6 +1337,9 @@
 
       if (CFG.minOn > CFG.maxOn) [CFG.minOn, CFG.maxOn] = [CFG.maxOn, CFG.minOn];
       if (CFG.minOff > CFG.maxOff) [CFG.minOff, CFG.maxOff] = [CFG.maxOff, CFG.minOff];
+      if (CFG.firstJoinRandomMinDelay > CFG.firstJoinRandomMaxDelay) {
+        [CFG.firstJoinRandomMinDelay, CFG.firstJoinRandomMaxDelay] = [CFG.firstJoinRandomMaxDelay, CFG.firstJoinRandomMinDelay];
+      }
     }
 
     function renderUI() {
@@ -1267,6 +1347,8 @@
       setVal("port", CFG.port);
       setVal("mcVersion", CFG.mcVersion);
       setVal("preConnectDelay", CFG.preConnectDelay);
+      setVal("firstJoinRandomMinDelay", CFG.firstJoinRandomMinDelay);
+      setVal("firstJoinRandomMaxDelay", CFG.firstJoinRandomMaxDelay);
       setVal("loginDelay", CFG.loginDelay);
       setVal("autoCmdDelay", CFG.autoCmdDelay);
       setVal("firstCmdDelay", CFG.firstCmdDelay);
@@ -1558,6 +1640,7 @@
     // Event Listeners
     document.addEventListener("DOMContentLoaded", () => {
       loadConfig();
+      startLogPolling();
       connectWS();
 
       // Server config
@@ -1695,7 +1778,7 @@
       }
 
       // Save on blur
-      const inputs = ["ip", "port", "mcVersion", "preConnectDelay", "loginDelay", "autoCmdDelay", "firstCmdDelay", "minOn", "maxOn", "minOff", "maxOff"];
+      const inputs = ["ip", "port", "mcVersion", "preConnectDelay", "firstJoinRandomMinDelay", "firstJoinRandomMaxDelay", "loginDelay", "autoCmdDelay", "firstCmdDelay", "minOn", "maxOn", "minOff", "maxOff"];
       inputs.forEach((id) => {
         const el = document.getElementById(id);
         if (el) {

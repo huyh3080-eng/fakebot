@@ -184,6 +184,8 @@ let CFG = {
   mcVersion: "",
   autoCmdEnabled: true,
   preConnectDelay: 0,
+  firstJoinRandomMinDelay: 0,
+  firstJoinRandomMaxDelay: 0,
   loginDelay: 2,
   minOn: 30,
   maxOn: 60,
@@ -221,6 +223,9 @@ const LOGIN_INFLIGHT_RETRY_MAX_MS = 4500;
 
 // WebSocket clients
 const clients = new Set();
+const LOG_BUFFER_MAX = 4000;
+let logSeq = 0;
+let logBuffer = [];
 
 wss.on("connection", (ws, req) => {
   clients.add(ws);
@@ -245,7 +250,19 @@ function emitBotStatus() {
 
 function sendLogs(user, msg, player = "") {
   const server = botServerMap?.[user] || "";
-  broadcast("log", { user, msg, server, player });
+  const entry = {
+    id: ++logSeq,
+    user,
+    msg,
+    server,
+    player,
+    ts: Date.now(),
+  };
+  logBuffer.push(entry);
+  if (logBuffer.length > LOG_BUFFER_MAX) {
+    logBuffer = logBuffer.slice(-LOG_BUFFER_MAX);
+  }
+  broadcast("log", entry);
 }
 
 function syncLegacyAliasesFromServers() {
@@ -317,6 +334,8 @@ function applyIncomingConfig(newCfg) {
   CFG.mcVersion = newCfg.mcVersion !== undefined ? newCfg.mcVersion : CFG.mcVersion;
   CFG.autoCmdEnabled = newCfg.autoCmdEnabled !== undefined ? newCfg.autoCmdEnabled : CFG.autoCmdEnabled;
   CFG.preConnectDelay = newCfg.preConnectDelay !== undefined ? newCfg.preConnectDelay : CFG.preConnectDelay;
+  CFG.firstJoinRandomMinDelay = newCfg.firstJoinRandomMinDelay !== undefined ? newCfg.firstJoinRandomMinDelay : CFG.firstJoinRandomMinDelay;
+  CFG.firstJoinRandomMaxDelay = newCfg.firstJoinRandomMaxDelay !== undefined ? newCfg.firstJoinRandomMaxDelay : CFG.firstJoinRandomMaxDelay;
   CFG.loginDelay = newCfg.loginDelay !== undefined ? newCfg.loginDelay : CFG.loginDelay;
   CFG.autoCmdDelay = newCfg.autoCmdDelay !== undefined ? newCfg.autoCmdDelay : CFG.autoCmdDelay;
   CFG.firstCmdDelay = newCfg.firstCmdDelay !== undefined ? newCfg.firstCmdDelay : CFG.firstCmdDelay;
@@ -368,6 +387,8 @@ function loadCfg() {
       CFG.mcVersion = raw.mcVersion !== undefined ? raw.mcVersion : CFG.mcVersion;
       CFG.autoCmdEnabled = raw.autoCmdEnabled !== undefined ? raw.autoCmdEnabled : CFG.autoCmdEnabled;
       CFG.preConnectDelay = raw.preConnectDelay !== undefined ? raw.preConnectDelay : CFG.preConnectDelay;
+      CFG.firstJoinRandomMinDelay = raw.firstJoinRandomMinDelay !== undefined ? raw.firstJoinRandomMinDelay : CFG.firstJoinRandomMinDelay;
+      CFG.firstJoinRandomMaxDelay = raw.firstJoinRandomMaxDelay !== undefined ? raw.firstJoinRandomMaxDelay : CFG.firstJoinRandomMaxDelay;
       CFG.loginDelay = raw.loginDelay !== undefined ? raw.loginDelay : CFG.loginDelay;
       CFG.autoCmdDelay = raw.autoCmdDelay !== undefined ? raw.autoCmdDelay : CFG.autoCmdDelay;
       CFG.firstCmdDelay = raw.firstCmdDelay !== undefined ? raw.firstCmdDelay : CFG.firstCmdDelay;
@@ -394,6 +415,8 @@ function saveCfg() {
       mcVersion: CFG.mcVersion,
       autoCmdEnabled: CFG.autoCmdEnabled,
       preConnectDelay: CFG.preConnectDelay,
+      firstJoinRandomMinDelay: CFG.firstJoinRandomMinDelay,
+      firstJoinRandomMaxDelay: CFG.firstJoinRandomMaxDelay,
       loginDelay: CFG.loginDelay,
       autoCmdDelay: CFG.autoCmdDelay,
       firstCmdDelay: CFG.firstCmdDelay,
@@ -428,6 +451,23 @@ function saveCfg() {
 
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min);
+}
+
+function calcInitialJoinBaseDelayMs(cfg) {
+  const MIN_FIRST_CONNECT_MS = 5000;
+  const fixedPreDelaySec = Math.max(0, Number(cfg?.preConnectDelay) || 0);
+  const fixedPreDelayMs = Math.max(MIN_FIRST_CONNECT_MS, Math.round(fixedPreDelaySec * 1000));
+
+  const randomMinSec = Math.max(0, Number(cfg?.firstJoinRandomMinDelay) || 0);
+  const randomMaxSecRaw = Number(cfg?.firstJoinRandomMaxDelay);
+  const randomMaxSec = Math.max(randomMinSec, Number.isFinite(randomMaxSecRaw) ? randomMaxSecRaw : randomMinSec);
+
+  // Backward compatibility: if random range is unset (0-0), keep old fixed preConnectDelay behavior.
+  if (randomMinSec === 0 && randomMaxSec === 0) return fixedPreDelayMs;
+
+  const minMs = Math.max(MIN_FIRST_CONNECT_MS, Math.round(randomMinSec * 1000));
+  const maxMs = Math.max(minMs, Math.round(randomMaxSec * 1000));
+  return randInt(minMs, maxMs);
 }
 
 function normalizeMcVersion(v) {
@@ -892,6 +932,14 @@ app.get("/api/config", (req, res) => {
   res.json(CFG);
 });
 
+app.get("/api/logs", (req, res) => {
+  const since = Number(req.query?.since || 0);
+  const items = Number.isFinite(since) && since > 0
+    ? logBuffer.filter((x) => Number(x?.id || 0) > since)
+    : logBuffer;
+  res.json({ ok: true, logs: items, lastId: logSeq });
+});
+
 app.get("/api/export-config", (req, res) => {
   try {
     if (!fs.existsSync(yamlPath)) return res.status(404).send("Chưa có config");
@@ -949,22 +997,21 @@ function runAllBots(botCmdMapFromApi) {
   autoCmdRuntimeEnabled = !!CFG.autoCmdEnabled;
 
   const loginDelaySec = Math.max(0, parseInt(CFG.loginDelay, 10) || 0);
-  const preConnectDelaySec = Math.max(0, Number(CFG.preConnectDelay) || 0);
   const MIN_LOGIN_DELAY_MS = LOGIN_ATTEMPT_GAP_MIN_MS;
   const loginDelayMs = Math.max(MIN_LOGIN_DELAY_MS, loginDelaySec * 1000);
-  const MIN_FIRST_CONNECT_MS = 5000;
-  const preDelayMs = Math.max(MIN_FIRST_CONNECT_MS, preConnectDelaySec * 1000);
 
   CFG.servers.smp.selectedBots.forEach((name, i) => {
     botServerMap[name] = "smp";
     sendLogs(name, `§a⏳ Đang khởi động bot SMP...`);
-    scheduleBotSpawn(name, "smp", preDelayMs + i * loginDelayMs);
+    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG);
+    scheduleBotSpawn(name, "smp", initialDelayMs + i * loginDelayMs);
   });
   const smpCount = CFG.servers.smp.selectedBots.length;
   CFG.servers.sky.selectedBots.forEach((name, i) => {
     botServerMap[name] = "sky";
     sendLogs(name, `§a⏳ Đang khởi động bot Skyblock...`);
-    scheduleBotSpawn(name, "sky", preDelayMs + (smpCount + i) * loginDelayMs);
+    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG);
+    scheduleBotSpawn(name, "sky", initialDelayMs + (smpCount + i) * loginDelayMs);
   });
 
   emitBotStatus();
@@ -996,6 +1043,10 @@ app.post("/api/run-all", (req, res) => {
     CFG.port = cfg.port || CFG.port;
     CFG.mcVersion = cfg.mcVersion !== undefined ? cfg.mcVersion : CFG.mcVersion;
     CFG.autoCmdEnabled = cfg.autoCmdEnabled !== undefined ? cfg.autoCmdEnabled : CFG.autoCmdEnabled;
+    CFG.preConnectDelay = cfg.preConnectDelay !== undefined ? cfg.preConnectDelay : CFG.preConnectDelay;
+    CFG.loginDelay = cfg.loginDelay !== undefined ? cfg.loginDelay : CFG.loginDelay;
+    CFG.firstJoinRandomMinDelay = cfg.firstJoinRandomMinDelay !== undefined ? cfg.firstJoinRandomMinDelay : CFG.firstJoinRandomMinDelay;
+    CFG.firstJoinRandomMaxDelay = cfg.firstJoinRandomMaxDelay !== undefined ? cfg.firstJoinRandomMaxDelay : CFG.firstJoinRandomMaxDelay;
     CFG.minOn = cfg.minOn !== undefined ? cfg.minOn : CFG.minOn;
     CFG.maxOn = cfg.maxOn !== undefined ? cfg.maxOn : CFG.maxOn;
     CFG.minOff = cfg.minOff !== undefined ? cfg.minOff : CFG.minOff;
@@ -1032,6 +1083,10 @@ app.post("/api/run-server", (req, res) => {
     CFG.port = cfg.port || CFG.port;
     CFG.mcVersion = cfg.mcVersion !== undefined ? cfg.mcVersion : CFG.mcVersion;
     CFG.autoCmdEnabled = cfg.autoCmdEnabled !== undefined ? cfg.autoCmdEnabled : CFG.autoCmdEnabled;
+    CFG.preConnectDelay = cfg.preConnectDelay !== undefined ? cfg.preConnectDelay : CFG.preConnectDelay;
+    CFG.loginDelay = cfg.loginDelay !== undefined ? cfg.loginDelay : CFG.loginDelay;
+    CFG.firstJoinRandomMinDelay = cfg.firstJoinRandomMinDelay !== undefined ? cfg.firstJoinRandomMinDelay : CFG.firstJoinRandomMinDelay;
+    CFG.firstJoinRandomMaxDelay = cfg.firstJoinRandomMaxDelay !== undefined ? cfg.firstJoinRandomMaxDelay : CFG.firstJoinRandomMaxDelay;
     CFG.minOn = cfg.minOn !== undefined ? cfg.minOn : CFG.minOn;
     CFG.maxOn = cfg.maxOn !== undefined ? cfg.maxOn : CFG.maxOn;
     CFG.minOff = cfg.minOff !== undefined ? cfg.minOff : CFG.minOff;
@@ -1043,18 +1098,16 @@ app.post("/api/run-server", (req, res) => {
   runtimeBotCmdMap = botCmdMap || {};
 
   const selected = [...CFG.servers[serverKey].selectedBots];
-  const loginDelaySec = Math.max(0, parseInt(cfg?.loginDelay, 10) || 0);
-  const preConnectDelaySec = Math.max(0, Number(cfg?.preConnectDelay) || 0);
+  const loginDelaySec = Math.max(0, parseInt(cfg?.loginDelay ?? CFG.loginDelay, 10) || 0);
   const MIN_LOGIN_DELAY_MS = LOGIN_ATTEMPT_GAP_MIN_MS;
   const loginDelayMs = Math.max(MIN_LOGIN_DELAY_MS, loginDelaySec * 1000);
-  const MIN_FIRST_CONNECT_MS = 5000;
-  const preDelayMs = Math.max(MIN_FIRST_CONNECT_MS, preConnectDelaySec * 1000);
 
   selected.forEach((name, i) => {
     desiredBots.add(name);
     botServerMap[name] = serverKey;
     sendLogs(name, `§a⏳ Đang khởi động bot ${serverKey.toUpperCase()}...`);
-    scheduleBotSpawn(name, serverKey, preDelayMs + i * loginDelayMs);
+    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG);
+    scheduleBotSpawn(name, serverKey, initialDelayMs + i * loginDelayMs);
   });
 
   emitBotStatus();
