@@ -1003,13 +1003,29 @@
           showNotification("Chưa tick bot nào để chạy", "warn");
           return;
         }
-        await fetch((window.BASE_PATH || '') + '/api/run-all', {
+        const res = await fetch((window.BASE_PATH || '') + '/api/run-all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cfg: CFG, botCmdMap: buildBotCmdMap() })
         });
-        showNotification('Đã khởi động tất cả bot!');
+        let data = null;
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok || (data && (data.ok === false || data.success === false))) {
+          if (res.status === 401 || data?.message) {
+            redirectToLogin(data?.message || "Chưa đăng nhập");
+            return;
+          }
+          showNotification(data?.error || data?.message || "Chạy bot thất bại", "warn");
+          return;
+        }
+        const count = Number(data?.count || 0);
+        if (count <= 0) {
+          showNotification("Server không nhận bot nào để chạy", "warn");
+          return;
+        }
+        showNotification(`Đã khởi động ${count} bot!`);
       } catch (e) {
+        showNotification("Lỗi gửi lệnh chạy bot", "warn");
         console.error('Failed to run:', e);
       }
     }
@@ -1023,13 +1039,29 @@
           showNotification(`Chưa tick bot ${serverKey.toUpperCase()} để chạy`, "warn");
           return;
         }
-        await fetch((window.BASE_PATH || '') + '/api/run-server', {
+        const res = await fetch((window.BASE_PATH || '') + '/api/run-server', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ serverKey, cfg: CFG, botCmdMap: buildBotCmdMap() })
         });
-        showNotification(`Đã khởi động ${serverKey.toUpperCase()}!`);
+        let data = null;
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok || (data && (data.ok === false || data.success === false))) {
+          if (res.status === 401 || data?.message) {
+            redirectToLogin(data?.message || "Chưa đăng nhập");
+            return;
+          }
+          showNotification(data?.error || data?.message || "Chạy bot thất bại", "warn");
+          return;
+        }
+        const count = Number(data?.count || 0);
+        if (count <= 0) {
+          showNotification(`Không có bot ${serverKey.toUpperCase()} nào được chạy`, "warn");
+          return;
+        }
+        showNotification(`Đã khởi động ${count} bot ${serverKey.toUpperCase()}!`);
       } catch (e) {
+        showNotification("Lỗi gửi lệnh chạy bot", "warn");
         console.error('Failed to run server:', e);
       }
     }
