@@ -259,6 +259,12 @@ function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function mergeArrayField(current, sourceObj, field) {
+  if (!sourceObj || typeof sourceObj !== "object") return current;
+  if (!Object.prototype.hasOwnProperty.call(sourceObj, field)) return current;
+  return Array.isArray(sourceObj[field]) ? sourceObj[field] : [];
+}
+
 function uniqueBotNames(list) {
   const out = [];
   const seen = new Set();
@@ -289,19 +295,19 @@ function applyIncomingConfig(newCfg) {
 
   if (newCfg.servers && typeof newCfg.servers === "object") {
     if (newCfg.servers.smp) {
-      CFG.servers.smp.accounts = toArray(newCfg.servers.smp.accounts);
-      CFG.servers.smp.selectedBots = toArray(newCfg.servers.smp.selectedBots);
-      CFG.servers.smp.autoCmds = toArray(newCfg.servers.smp.autoCmds);
+      CFG.servers.smp.accounts = mergeArrayField(CFG.servers.smp.accounts, newCfg.servers.smp, "accounts");
+      CFG.servers.smp.selectedBots = mergeArrayField(CFG.servers.smp.selectedBots, newCfg.servers.smp, "selectedBots");
+      CFG.servers.smp.autoCmds = mergeArrayField(CFG.servers.smp.autoCmds, newCfg.servers.smp, "autoCmds");
     }
     if (newCfg.servers.sky) {
-      CFG.servers.sky.accounts = toArray(newCfg.servers.sky.accounts);
-      CFG.servers.sky.selectedBots = toArray(newCfg.servers.sky.selectedBots);
-      CFG.servers.sky.autoCmds = toArray(newCfg.servers.sky.autoCmds);
+      CFG.servers.sky.accounts = mergeArrayField(CFG.servers.sky.accounts, newCfg.servers.sky, "accounts");
+      CFG.servers.sky.selectedBots = mergeArrayField(CFG.servers.sky.selectedBots, newCfg.servers.sky, "selectedBots");
+      CFG.servers.sky.autoCmds = mergeArrayField(CFG.servers.sky.autoCmds, newCfg.servers.sky, "autoCmds");
     }
   } else {
-    if (Array.isArray(newCfg.accounts)) CFG.servers.smp.accounts = newCfg.accounts;
-    if (Array.isArray(newCfg.selectedBots)) CFG.servers.smp.selectedBots = newCfg.selectedBots;
-    if (Array.isArray(newCfg.autoCmds)) CFG.servers.smp.autoCmds = newCfg.autoCmds;
+    CFG.servers.smp.accounts = mergeArrayField(CFG.servers.smp.accounts, newCfg, "accounts");
+    CFG.servers.smp.selectedBots = mergeArrayField(CFG.servers.smp.selectedBots, newCfg, "selectedBots");
+    CFG.servers.smp.autoCmds = mergeArrayField(CFG.servers.smp.autoCmds, newCfg, "autoCmds");
   }
   normalizeServersInCfg();
   syncLegacyAliasesFromServers();
