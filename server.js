@@ -259,6 +259,31 @@ function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function uniqueBotNames(list) {
+  const out = [];
+  const seen = new Set();
+  toArray(list).forEach((item) => {
+    const name = String(item || "").trim();
+    if (!name) return;
+    if (seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  });
+  return out;
+}
+
+function normalizeServerList(serverCfg) {
+  const selectedBots = uniqueBotNames(serverCfg?.selectedBots);
+  const accounts = uniqueBotNames([...(serverCfg?.accounts || []), ...selectedBots]);
+  const autoCmds = toArray(serverCfg?.autoCmds).map((x) => String(x || "").trim()).filter(Boolean);
+  return { accounts, selectedBots, autoCmds };
+}
+
+function normalizeServersInCfg() {
+  CFG.servers.smp = normalizeServerList(CFG.servers.smp);
+  CFG.servers.sky = normalizeServerList(CFG.servers.sky);
+}
+
 function applyIncomingConfig(newCfg) {
   if (!newCfg || typeof newCfg !== "object") return;
 
@@ -278,6 +303,7 @@ function applyIncomingConfig(newCfg) {
     if (Array.isArray(newCfg.selectedBots)) CFG.servers.smp.selectedBots = newCfg.selectedBots;
     if (Array.isArray(newCfg.autoCmds)) CFG.servers.smp.autoCmds = newCfg.autoCmds;
   }
+  normalizeServersInCfg();
   syncLegacyAliasesFromServers();
 
   CFG.ip = newCfg.ip || CFG.ip;
@@ -327,6 +353,7 @@ function loadCfg() {
           };
         }
       }
+      normalizeServersInCfg();
       syncLegacyAliasesFromServers();
       
       // Load other config fields
@@ -351,6 +378,7 @@ function loadCfg() {
 
 function saveCfg() {
   try {
+    normalizeServersInCfg();
     syncLegacyAliasesFromServers();
 
     // Build config object for saving

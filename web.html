@@ -771,6 +771,33 @@
       return Array.isArray(value) ? value : [];
     }
 
+    function uniqueBotNames(list) {
+      const out = [];
+      const seen = new Set();
+      asArray(list).forEach((item) => {
+        const name = String(item || "").trim();
+        if (!name) return;
+        if (seen.has(name)) return;
+        seen.add(name);
+        out.push(name);
+      });
+      return out;
+    }
+
+    function normalizeServerPayload(serverCfg, fallbackCfg = {}) {
+      const selectedBots = uniqueBotNames(serverCfg.selectedBots).length
+        ? uniqueBotNames(serverCfg.selectedBots)
+        : uniqueBotNames(fallbackCfg.selectedBots);
+      const baseAccounts = uniqueBotNames(serverCfg.accounts).length
+        ? uniqueBotNames(serverCfg.accounts)
+        : uniqueBotNames(fallbackCfg.accounts);
+      const accounts = uniqueBotNames([...baseAccounts, ...selectedBots]);
+      const autoCmds = asArray(serverCfg.autoCmds).length
+        ? asArray(serverCfg.autoCmds)
+        : asArray(fallbackCfg.autoCmds);
+      return { accounts, selectedBots, autoCmds };
+    }
+
     function normalizeCfgPayload(rawCfg) {
       const cfg = rawCfg && typeof rawCfg === "object" ? rawCfg : {};
       const servers = cfg.servers && typeof cfg.servers === "object" ? cfg.servers : {};
@@ -781,16 +808,12 @@
         ...CFG,
         ...cfg,
         servers: {
-          smp: {
-            accounts: asArray(smp.accounts).length ? asArray(smp.accounts) : asArray(cfg.accounts),
-            selectedBots: asArray(smp.selectedBots).length ? asArray(smp.selectedBots) : asArray(cfg.selectedBots),
-            autoCmds: asArray(smp.autoCmds).length ? asArray(smp.autoCmds) : asArray(cfg.autoCmds),
-          },
-          sky: {
-            accounts: asArray(sky.accounts),
-            selectedBots: asArray(sky.selectedBots),
-            autoCmds: asArray(sky.autoCmds),
-          },
+          smp: normalizeServerPayload(smp, {
+            accounts: cfg.accounts,
+            selectedBots: cfg.selectedBots,
+            autoCmds: cfg.autoCmds,
+          }),
+          sky: normalizeServerPayload(sky),
         },
       };
     }
