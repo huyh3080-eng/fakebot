@@ -873,7 +873,16 @@
     async function loadConfig() {
       try {
         const res = await fetch((window.BASE_PATH || '') + '/api/config');
-        const rawCfg = await res.json();
+        let rawCfg = null;
+        try { rawCfg = await res.json(); } catch (_) {}
+        if (!res.ok || (rawCfg && rawCfg.ok === false)) {
+          const msg = rawCfg?.message || "Phiên đăng nhập đã hết hạn";
+          showNotification(msg, "warn");
+          setTimeout(() => {
+            window.location.href = (window.BASE_PATH || "") + "/loginbot";
+          }, 400);
+          return;
+        }
         CFG = normalizeCfgPayload(rawCfg);
         renderUI();
       } catch (e) {
