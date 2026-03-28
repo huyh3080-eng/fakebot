@@ -767,6 +767,34 @@
       return /^[A-Za-z0-9_]{1,16}$/.test(String(name || "").trim());
     }
 
+    function asArray(value) {
+      return Array.isArray(value) ? value : [];
+    }
+
+    function normalizeCfgPayload(rawCfg) {
+      const cfg = rawCfg && typeof rawCfg === "object" ? rawCfg : {};
+      const servers = cfg.servers && typeof cfg.servers === "object" ? cfg.servers : {};
+      const smp = servers.smp && typeof servers.smp === "object" ? servers.smp : {};
+      const sky = servers.sky && typeof servers.sky === "object" ? servers.sky : {};
+
+      return {
+        ...CFG,
+        ...cfg,
+        servers: {
+          smp: {
+            accounts: asArray(smp.accounts).length ? asArray(smp.accounts) : asArray(cfg.accounts),
+            selectedBots: asArray(smp.selectedBots).length ? asArray(smp.selectedBots) : asArray(cfg.selectedBots),
+            autoCmds: asArray(smp.autoCmds).length ? asArray(smp.autoCmds) : asArray(cfg.autoCmds),
+          },
+          sky: {
+            accounts: asArray(sky.accounts),
+            selectedBots: asArray(sky.selectedBots),
+            autoCmds: asArray(sky.autoCmds),
+          },
+        },
+      };
+    }
+
     function extractPlayerNameFromChat(rawMsg) {
       const s = String(rawMsg ?? "");
       let m = s.match(/<\s*([^>]{1,32})\s*>/);
@@ -822,7 +850,8 @@
     async function loadConfig() {
       try {
         const res = await fetch((window.BASE_PATH || '') + '/api/config');
-        CFG = await res.json();
+        const rawCfg = await res.json();
+        CFG = normalizeCfgPayload(rawCfg);
         renderUI();
       } catch (e) {
         console.error('Failed to load config:', e);

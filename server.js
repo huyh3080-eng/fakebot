@@ -255,6 +255,46 @@ function syncLegacyAliasesFromServers() {
   CFG.autoCmds = Array.isArray(smp.autoCmds) ? [...smp.autoCmds] : [];
 }
 
+function toArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function applyIncomingConfig(newCfg) {
+  if (!newCfg || typeof newCfg !== "object") return;
+
+  if (newCfg.servers && typeof newCfg.servers === "object") {
+    if (newCfg.servers.smp) {
+      CFG.servers.smp.accounts = toArray(newCfg.servers.smp.accounts);
+      CFG.servers.smp.selectedBots = toArray(newCfg.servers.smp.selectedBots);
+      CFG.servers.smp.autoCmds = toArray(newCfg.servers.smp.autoCmds);
+    }
+    if (newCfg.servers.sky) {
+      CFG.servers.sky.accounts = toArray(newCfg.servers.sky.accounts);
+      CFG.servers.sky.selectedBots = toArray(newCfg.servers.sky.selectedBots);
+      CFG.servers.sky.autoCmds = toArray(newCfg.servers.sky.autoCmds);
+    }
+  } else {
+    if (Array.isArray(newCfg.accounts)) CFG.servers.smp.accounts = newCfg.accounts;
+    if (Array.isArray(newCfg.selectedBots)) CFG.servers.smp.selectedBots = newCfg.selectedBots;
+    if (Array.isArray(newCfg.autoCmds)) CFG.servers.smp.autoCmds = newCfg.autoCmds;
+  }
+  syncLegacyAliasesFromServers();
+
+  CFG.ip = newCfg.ip || CFG.ip;
+  CFG.port = newCfg.port || CFG.port;
+  CFG.mcVersion = newCfg.mcVersion !== undefined ? newCfg.mcVersion : CFG.mcVersion;
+  CFG.autoCmdEnabled = newCfg.autoCmdEnabled !== undefined ? newCfg.autoCmdEnabled : CFG.autoCmdEnabled;
+  CFG.preConnectDelay = newCfg.preConnectDelay !== undefined ? newCfg.preConnectDelay : CFG.preConnectDelay;
+  CFG.loginDelay = newCfg.loginDelay !== undefined ? newCfg.loginDelay : CFG.loginDelay;
+  CFG.autoCmdDelay = newCfg.autoCmdDelay !== undefined ? newCfg.autoCmdDelay : CFG.autoCmdDelay;
+  CFG.firstCmdDelay = newCfg.firstCmdDelay !== undefined ? newCfg.firstCmdDelay : CFG.firstCmdDelay;
+  CFG.minOn = newCfg.minOn !== undefined ? newCfg.minOn : CFG.minOn;
+  CFG.maxOn = newCfg.maxOn !== undefined ? newCfg.maxOn : CFG.maxOn;
+  CFG.minOff = newCfg.minOff !== undefined ? newCfg.minOff : CFG.minOff;
+  CFG.maxOff = newCfg.maxOff !== undefined ? newCfg.maxOff : CFG.maxOff;
+  CFG.autoStartOnBoot = newCfg.autoStartOnBoot !== undefined ? !!newCfg.autoStartOnBoot : CFG.autoStartOnBoot;
+}
+
 function loadCfg() {
   try {
     if (fs.existsSync(yamlPath)) {
@@ -264,14 +304,14 @@ function loadCfg() {
       if (raw.servers && (raw.servers.smp || raw.servers.sky)) {
         CFG.servers = {
           smp: {
-            accounts: raw.servers.smp?.accounts || [],
-            selectedBots: raw.servers.smp?.selectedBots || [],
-            autoCmds: raw.servers.smp?.autoCmds || []
+            accounts: toArray(raw.servers.smp?.accounts),
+            selectedBots: toArray(raw.servers.smp?.selectedBots),
+            autoCmds: toArray(raw.servers.smp?.autoCmds)
           },
           sky: {
-            accounts: raw.servers.sky?.accounts || [],
-            selectedBots: raw.servers.sky?.selectedBots || [],
-            autoCmds: raw.servers.sky?.autoCmds || []
+            accounts: toArray(raw.servers.sky?.accounts),
+            selectedBots: toArray(raw.servers.sky?.selectedBots),
+            autoCmds: toArray(raw.servers.sky?.autoCmds)
           }
         };
       } else {
@@ -837,8 +877,8 @@ app.post("/api/import-config", (req, res) => {
     if (!yamlContent.trim()) return res.json({ ok: false, error: "Nội dung trống" });
     const parsed = yaml.load(yamlContent);
     if (!parsed || typeof parsed !== "object") return res.json({ ok: false, error: "YAML không hợp lệ" });
-    fs.writeFileSync(yamlPath, yamlContent, "utf8");
-    loadCfg();
+    applyIncomingConfig(parsed);
+    saveCfg();
     return res.json({ ok: true });
   } catch (e) {
     return res.json({ ok: false, error: e?.message || String(e) });
@@ -847,41 +887,7 @@ app.post("/api/import-config", (req, res) => {
 
 app.post("/api/config", (req, res) => {
   const newCfg = req.body;
-  
-  // Update servers structure
-  if (newCfg.servers) {
-    if (newCfg.servers.smp) {
-      CFG.servers.smp.accounts = newCfg.servers.smp.accounts || [];
-      CFG.servers.smp.selectedBots = newCfg.servers.smp.selectedBots || [];
-      CFG.servers.smp.autoCmds = newCfg.servers.smp.autoCmds || [];
-    }
-    if (newCfg.servers.sky) {
-      CFG.servers.sky.accounts = newCfg.servers.sky.accounts || [];
-      CFG.servers.sky.selectedBots = newCfg.servers.sky.selectedBots || [];
-      CFG.servers.sky.autoCmds = newCfg.servers.sky.autoCmds || [];
-    }
-  } else {
-    // Backward compatibility: accept legacy payload without servers.smp/sky
-    if (Array.isArray(newCfg.accounts)) CFG.servers.smp.accounts = newCfg.accounts;
-    if (Array.isArray(newCfg.selectedBots)) CFG.servers.smp.selectedBots = newCfg.selectedBots;
-    if (Array.isArray(newCfg.autoCmds)) CFG.servers.smp.autoCmds = newCfg.autoCmds;
-  }
-  syncLegacyAliasesFromServers();
-  
-  // Update other fields
-  CFG.ip = newCfg.ip || CFG.ip;
-  CFG.port = newCfg.port || CFG.port;
-  CFG.mcVersion = newCfg.mcVersion !== undefined ? newCfg.mcVersion : CFG.mcVersion;
-  CFG.autoCmdEnabled = newCfg.autoCmdEnabled !== undefined ? newCfg.autoCmdEnabled : CFG.autoCmdEnabled;
-  CFG.preConnectDelay = newCfg.preConnectDelay !== undefined ? newCfg.preConnectDelay : CFG.preConnectDelay;
-  CFG.loginDelay = newCfg.loginDelay !== undefined ? newCfg.loginDelay : CFG.loginDelay;
-  CFG.autoCmdDelay = newCfg.autoCmdDelay !== undefined ? newCfg.autoCmdDelay : CFG.autoCmdDelay;
-  CFG.firstCmdDelay = newCfg.firstCmdDelay !== undefined ? newCfg.firstCmdDelay : CFG.firstCmdDelay;
-  CFG.minOn = newCfg.minOn !== undefined ? newCfg.minOn : CFG.minOn;
-  CFG.maxOn = newCfg.maxOn !== undefined ? newCfg.maxOn : CFG.maxOn;
-  CFG.minOff = newCfg.minOff !== undefined ? newCfg.minOff : CFG.minOff;
-  CFG.maxOff = newCfg.maxOff !== undefined ? newCfg.maxOff : CFG.maxOff;
-  CFG.autoStartOnBoot = newCfg.autoStartOnBoot !== undefined ? !!newCfg.autoStartOnBoot : CFG.autoStartOnBoot;
+  applyIncomingConfig(newCfg);
 
   saveCfg();
   res.json({ success: true });
