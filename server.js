@@ -453,6 +453,16 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
+function hashNameMod(name, mod) {
+  const text = String(name || "");
+  const size = Math.max(1, Number(mod) || 1);
+  let h = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % size;
+}
+
 function calcFirstJoinFixedDelayMs(cfg) {
   const MIN_FIRST_CONNECT_MS = 5000;
   const fixedPreDelaySec = Math.max(0, Number(cfg?.preConnectDelay) || 0);
@@ -777,7 +787,8 @@ function finishServerLoginAttempt(serverKey, { cfg, success = false, fastKick = 
 function calcReconnectDelayMs(name, cfg, lastKickReasonText) {
   const minOff = Math.max(0, Number(cfg.minOff) || 0);
   const maxOff = Math.max(minOff, Number(cfg.maxOff) || minOff);
-  const baseMs = (randInt(minOff, maxOff) + randInt(0, 8)) * 1000;
+  const botPhaseSec = hashNameMod(name, 9);
+  const baseMs = (randInt(minOff, maxOff) + randInt(0, 8) + botPhaseSec) * 1000;
 
   if (isLoginFastKickReason(lastKickReasonText)) {
     return randInt(1500, 3500);
@@ -892,8 +903,10 @@ function spawnBot(name, serverKey) {
     runAutoCmdOncePerSpawn(bot, name, CFG);
 
     const timeOnSec = randInt(CFG.minOn, CFG.maxOn);
-    const jitterOnSec = randInt(0, 12);
-    const timeOnMs = (timeOnSec + jitterOnSec) * 1000;
+    const extraSpreadSec = Math.max(8, Math.floor(Math.max(0, Number(CFG.maxOn) - Number(CFG.minOn)) / 2));
+    const jitterOnSec = randInt(0, extraSpreadSec);
+    const botPhaseSec = hashNameMod(name, 11);
+    const timeOnMs = (timeOnSec + jitterOnSec + botPhaseSec) * 1000;
     quitTimer = setTimeout(() => {
       if (activeBots[name]) {
         try { bot.quit(); } catch {}
