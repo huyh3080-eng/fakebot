@@ -109,7 +109,8 @@ function getVal(id) {
 }
 function numOr(oldVal, raw, opts = {}) {
   const { int = true, min = null, allowZero = true } = opts;
-  let n = int ? parseInt(raw) : Number(raw);
+  const text = String(raw ?? "").trim().replace(",", ".");
+  let n = int ? parseInt(text, 10) : Number(text);
   if (!Number.isFinite(n)) return oldVal;
   if (!allowZero && n === 0) return oldVal;
   if (min !== null && n < min) n = min;

@@ -902,10 +902,19 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
   const cmds = cmdsRaw.map((s) => String(s ?? "").trim()).filter(Boolean);
   if (cmds.length === 0) return;
 
-  const baseDelayMs = Math.max(0, Number(cfg.firstCmdDelay) || 0) * 1000;
-  const delaySec = Number(cfg.autoCmdDelay ?? cfg.cmdDelay ?? 1);
-  const stepDelayMs = Math.max(100, Math.max(0.1, delaySec) * 1000);
-  const firstCmdJitterMs = randInt(0, 3000);
+  const parseDelaySec = (raw, fallbackSec, minSec) => {
+    const normalized = String(raw ?? "").trim().replace(",", ".");
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return fallbackSec;
+    return Math.max(minSec, parsed);
+  };
+
+  const firstDelaySec = parseDelaySec(cfg.firstCmdDelay, 1.5, 0);
+  const stepDelaySec = parseDelaySec(cfg.autoCmdDelay ?? cfg.cmdDelay ?? 1, 1, 0.1);
+  const baseDelayMs = Math.max(0, Math.round(firstDelaySec * 1000));
+  const stepDelayMs = Math.max(100, Math.round(stepDelaySec * 1000));
+
+  sendLogs(name, `§8[AutoCmd] wait first ${firstDelaySec}s, step ${stepDelaySec}s`);
 
   const t0 = setTimeout(() => {
     let i = 0;
@@ -925,7 +934,7 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
       bot._panelMeta.autoCmdTimers.push(t);
     };
     runNext();
-  }, baseDelayMs + firstCmdJitterMs);
+  }, baseDelayMs);
 
   bot._panelMeta.autoCmdTimers.push(t0);
 }

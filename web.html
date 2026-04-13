@@ -1362,7 +1362,8 @@
 
     function numOr(oldVal, raw, opts = {}) {
       const { int = true, min = null } = opts;
-      let n = int ? parseInt(raw) : Number(raw);
+      const text = String(raw ?? "").trim().replace(",", ".");
+      let n = int ? parseInt(text, 10) : Number(text);
       if (!Number.isFinite(n)) return oldVal;
       if (min !== null && n < min) n = min;
       return n;
