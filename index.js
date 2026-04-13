@@ -18,6 +18,12 @@ const BLOCKED_MOD_CHANNEL_RE = /^(?:fml(?:[:|]|$)|forge(?:[:|]|$)|fabric(?:[:|]|
 const BRAND_CHANNEL_RE = /^(?:MC\|Brand|minecraft:brand)$/i;
 const ALLOW_PLUGIN_CHANNELS = String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
 const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL || "").trim() === "1";
+const STEALTH_DISABLED_INTERNAL_PLUGINS = Object.freeze({
+  book: false,
+  anvil: false,
+  villager: false,
+  command_block: false,
+});
 const EXTRA_ALLOWED_CHANNELS = new Set(
   String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
     .split(",")
@@ -706,6 +712,7 @@ function spawnBot(name) {
     username: name,
     auth: "offline",
     brand: DEFAULT_CLIENT_BRAND,
+    plugins: { ...STEALTH_DISABLED_INTERNAL_PLUGINS },
   };
   if (mcVersion) botOpts.version = mcVersion;
 
