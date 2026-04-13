@@ -220,6 +220,8 @@ const FAST_LOGIN_COOLDOWN_BASE_MS = 45000;
 const FAST_LOGIN_COOLDOWN_MAX_MS = 300000;
 const LOGIN_INFLIGHT_RETRY_MIN_MS = 2000;
 const LOGIN_INFLIGHT_RETRY_MAX_MS = 4500;
+const DEFAULT_CLIENT_BRAND = String(process.env.MC_CLIENT_BRAND || "vanilla").trim() || "vanilla";
+const BLOCKED_MOD_CHANNEL_RE = /^(?:fml(?:[:|]|$)|forge(?:[:|]|$)|fabric(?:[:|]|$)|quilt(?:[:|]|$)|liteloader(?:[:|]|$))/i;
 
 // WebSocket clients
 const clients = new Set();
@@ -263,6 +265,20 @@ function sendLogs(user, msg, player = "") {
     logBuffer = logBuffer.slice(-LOG_BUFFER_MAX);
   }
   broadcast("log", entry);
+}
+
+function installPayloadGuard(bot, botName) {
+  const client = bot?._client;
+  if (!client || typeof client.writeChannel !== "function") return;
+  const originalWriteChannel = client.writeChannel.bind(client);
+  client.writeChannel = (channel, params) => {
+    const channelName = String(channel || "").trim();
+    if (BLOCKED_MOD_CHANNEL_RE.test(channelName)) {
+      sendLogs(botName, `§8[Guard] blocked custom payload channel: ${channelName}`);
+      return;
+    }
+    return originalWriteChannel(channelName, params);
+  };
 }
 
 function syncLegacyAliasesFromServers() {
@@ -880,6 +896,7 @@ function spawnBot(name, serverKey) {
     port: parseInt(CFG.port),
     username: name,
     auth: "offline",
+    brand: DEFAULT_CLIENT_BRAND,
   };
   if (mcVersion) botOpts.version = mcVersion;
 
@@ -889,6 +906,7 @@ function spawnBot(name, serverKey) {
   botServerMap[name] = targetServerKey;
 
   const bot = mineflayer.createBot(botOpts);
+  installPayloadGuard(bot, name);
   bot._panelMeta = { autoCmdTimers: [], autoCmdRunning: false };
 
   let quitTimer = null;

@@ -13,6 +13,8 @@ let isQuitting = false;
 
 let desiredBots = new Set();
 let autoCmdRuntimeEnabled = true;
+const DEFAULT_CLIENT_BRAND = String(process.env.MC_CLIENT_BRAND || "vanilla").trim() || "vanilla";
+const BLOCKED_MOD_CHANNEL_RE = /^(?:fml(?:[:|]|$)|forge(?:[:|]|$)|fabric(?:[:|]|$)|quilt(?:[:|]|$)|liteloader(?:[:|]|$))/i;
 
 let runtimeBotCmdMap = {};
 let botServerMap = {};
@@ -82,6 +84,20 @@ function logChatDebug(botName, msgStr, player, rawJson) {
 function sendLogs(user, msg, player = "") {
   const server = botServerMap?.[user] || "";
   safeSend("log", { user, msg, server, player });
+}
+
+function installPayloadGuard(bot, botName) {
+  const client = bot?._client;
+  if (!client || typeof client.writeChannel !== "function") return;
+  const originalWriteChannel = client.writeChannel.bind(client);
+  client.writeChannel = (channel, params) => {
+    const channelName = String(channel || "").trim();
+    if (BLOCKED_MOD_CHANNEL_RE.test(channelName)) {
+      sendLogs(botName, `§8[Guard] blocked custom payload channel: ${channelName}`);
+      return;
+    }
+    return originalWriteChannel(channelName, params);
+  };
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -629,10 +645,12 @@ function spawnBot(name) {
     port: parseInt(cfg.port),
     username: name,
     auth: "offline",
+    brand: DEFAULT_CLIENT_BRAND,
   };
   if (mcVersion) botOpts.version = mcVersion;
 
   const bot = mineflayer.createBot(botOpts);
+  installPayloadGuard(bot, name);
   bot._panelMeta = { autoCmdTimers: [], autoCmdRunning: false };
 
   let quitTimer = null;
