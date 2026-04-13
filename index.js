@@ -15,6 +15,15 @@ let desiredBots = new Set();
 let autoCmdRuntimeEnabled = true;
 const DEFAULT_CLIENT_BRAND = String(process.env.MC_CLIENT_BRAND || "vanilla").trim() || "vanilla";
 const BLOCKED_MOD_CHANNEL_RE = /^(?:fml(?:[:|]|$)|forge(?:[:|]|$)|fabric(?:[:|]|$)|quilt(?:[:|]|$)|liteloader(?:[:|]|$))/i;
+const BRAND_CHANNEL_RE = /^(?:MC\|Brand|minecraft:brand)$/i;
+const ALLOW_PLUGIN_CHANNELS = String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
+const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL || "").trim() === "1";
+const EXTRA_ALLOWED_CHANNELS = new Set(
+  String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 let runtimeBotCmdMap = {};
 let botServerMap = {};
@@ -86,18 +95,69 @@ function sendLogs(user, msg, player = "") {
   safeSend("log", { user, msg, server, player });
 }
 
+function normalizePayloadChannel(channel) {
+  return String(channel || "").trim();
+}
+
+function shouldBlockCustomPayloadChannel(channel) {
+  const channelName = normalizePayloadChannel(channel);
+  if (!channelName) return true;
+  if (BLOCKED_MOD_CHANNEL_RE.test(channelName)) return true;
+  if (EXTRA_ALLOWED_CHANNELS.has(channelName.toLowerCase())) return false;
+  if (BRAND_CHANNEL_RE.test(channelName)) return !ALLOW_BRAND_CHANNEL;
+  return !ALLOW_PLUGIN_CHANNELS;
+}
+
 function installPayloadGuard(bot, botName) {
   const client = bot?._client;
-  if (!client || typeof client.writeChannel !== "function") return;
-  const originalWriteChannel = client.writeChannel.bind(client);
-  client.writeChannel = (channel, params) => {
-    const channelName = String(channel || "").trim();
-    if (BLOCKED_MOD_CHANNEL_RE.test(channelName)) {
-      sendLogs(botName, `§8[Guard] blocked custom payload channel: ${channelName}`);
-      return;
-    }
-    return originalWriteChannel(channelName, params);
+  if (!client) return;
+
+  const blockedLogDedup = new Set();
+  const logBlocked = (kind, channelName) => {
+    const safeChannel = normalizePayloadChannel(channelName) || "(empty)";
+    const key = `${kind}|${safeChannel.toLowerCase()}`;
+    if (blockedLogDedup.has(key)) return;
+    blockedLogDedup.add(key);
+    sendLogs(botName, `§8[Guard] blocked ${kind}: ${safeChannel}`);
   };
+
+  if (typeof client.registerChannel === "function") {
+    const originalRegisterChannel = client.registerChannel.bind(client);
+    client.registerChannel = (channel, parser, custom) => {
+      const channelName = normalizePayloadChannel(channel);
+      if (shouldBlockCustomPayloadChannel(channelName)) {
+        logBlocked("registerChannel", channelName);
+        return;
+      }
+      return originalRegisterChannel(channelName, parser, custom);
+    };
+  }
+
+  if (typeof client.writeChannel === "function") {
+    const originalWriteChannel = client.writeChannel.bind(client);
+    client.writeChannel = (channel, params) => {
+      const channelName = normalizePayloadChannel(channel);
+      if (shouldBlockCustomPayloadChannel(channelName)) {
+        logBlocked("writeChannel", channelName);
+        return;
+      }
+      return originalWriteChannel(channelName, params);
+    };
+  }
+
+  if (typeof client.write === "function") {
+    const originalWrite = client.write.bind(client);
+    client.write = (packetName, payload) => {
+      if (String(packetName || "").trim() === "custom_payload") {
+        const channelName = normalizePayloadChannel(payload?.channel);
+        if (shouldBlockCustomPayloadChannel(channelName)) {
+          logBlocked("custom_payload", channelName);
+          return;
+        }
+      }
+      return originalWrite(packetName, payload);
+    };
+  }
 }
 
 const gotLock = app.requestSingleInstanceLock();
