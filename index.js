@@ -13,11 +13,13 @@ let isQuitting = false;
 
 let desiredBots = new Set();
 let autoCmdRuntimeEnabled = true;
+const MIN_FIRST_AUTOCMD_DELAY_SEC = 3;
 const DEFAULT_CLIENT_BRAND = String(process.env.MC_CLIENT_BRAND || "vanilla").trim() || "vanilla";
 const BLOCKED_MOD_CHANNEL_RE = /^(?:fml(?:[:|]|$)|forge(?:[:|]|$)|fabric(?:[:|]|$)|quilt(?:[:|]|$)|liteloader(?:[:|]|$))/i;
 const BRAND_CHANNEL_RE = /^(?:MC\|Brand|minecraft:brand)$/i;
 const ALLOW_PLUGIN_CHANNELS = String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
-const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL || "").trim() === "1";
+const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL ?? "1").trim() !== "0";
+const LOG_PLUGIN_CHANNELS = String(process.env.MC_LOG_PLUGIN_CHANNELS || "").trim() === "1";
 const STEALTH_DISABLED_INTERNAL_PLUGINS = Object.freeze({
   book: false,
   anvil: false,
@@ -119,12 +121,21 @@ function installPayloadGuard(bot, botName) {
   if (!client) return;
 
   const blockedLogDedup = new Set();
+  const allowedLogDedup = new Set();
   const logBlocked = (kind, channelName) => {
     const safeChannel = normalizePayloadChannel(channelName) || "(empty)";
     const key = `${kind}|${safeChannel.toLowerCase()}`;
     if (blockedLogDedup.has(key)) return;
     blockedLogDedup.add(key);
     sendLogs(botName, `§8[Guard] blocked ${kind}: ${safeChannel}`);
+  };
+  const logAllowed = (kind, channelName) => {
+    if (!LOG_PLUGIN_CHANNELS) return;
+    const safeChannel = normalizePayloadChannel(channelName) || "(empty)";
+    const key = `${kind}|${safeChannel.toLowerCase()}`;
+    if (allowedLogDedup.has(key)) return;
+    allowedLogDedup.add(key);
+    sendLogs(botName, `§8[Guard] allow ${kind}: ${safeChannel}`);
   };
 
   if (typeof client.registerChannel === "function") {
@@ -135,6 +146,7 @@ function installPayloadGuard(bot, botName) {
         logBlocked("registerChannel", channelName);
         return;
       }
+      logAllowed("registerChannel", channelName);
       return originalRegisterChannel(channelName, parser, custom);
     };
   }
@@ -147,6 +159,7 @@ function installPayloadGuard(bot, botName) {
         logBlocked("writeChannel", channelName);
         return;
       }
+      logAllowed("writeChannel", channelName);
       return originalWriteChannel(channelName, params);
     };
   }
@@ -160,6 +173,7 @@ function installPayloadGuard(bot, botName) {
           logBlocked("custom_payload", channelName);
           return;
         }
+        logAllowed("custom_payload", channelName);
       }
       return originalWrite(packetName, payload);
     };
@@ -581,7 +595,10 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
     return Math.max(minSec, parsed);
   };
 
-  const firstDelaySec = parseDelaySec(cfg.firstCmdDelay, 1.5, 0);
+  const firstDelaySec = Math.max(
+    MIN_FIRST_AUTOCMD_DELAY_SEC,
+    parseDelaySec(cfg.firstCmdDelay, MIN_FIRST_AUTOCMD_DELAY_SEC, 0)
+  );
   const stepDelaySec = parseDelaySec(cfg.autoCmdDelay ?? cfg.cmdDelay ?? 1, 1, 0.1);
   const baseDelayMs = Math.max(0, Math.round(firstDelaySec * 1000));
   const stepDelayMs = Math.max(100, Math.round(stepDelaySec * 1000));
