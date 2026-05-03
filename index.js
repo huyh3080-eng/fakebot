@@ -858,12 +858,23 @@ function stopAutoCmdTimers(bot) {
   } catch {}
 }
 
+function getAutoCmdsForBot(name, cfg) {
+  const perBot = runtimeBotCmdMap?.[name];
+  if (Array.isArray(perBot)) return perBot;
+
+  const serverKey = String(botServerMap?.[name] || "").toLowerCase();
+  if ((serverKey === "smp" || serverKey === "sky") && Array.isArray(cfg?.servers?.[serverKey]?.autoCmds)) {
+    return cfg.servers[serverKey].autoCmds;
+  }
+
+  return [];
+}
+
 function runAutoCmdOncePerSpawn(bot, name, cfg) {
   if (!autoCmdRuntimeEnabled) return;
   if (!cfg.autoCmdEnabled) return;
 
-  const perBot = runtimeBotCmdMap?.[name];
-  const cmdsRaw = Array.isArray(perBot) ? perBot : cfg.autoCmds;
+  const cmdsRaw = getAutoCmdsForBot(name, cfg);
   if (!Array.isArray(cmdsRaw) || cmdsRaw.length === 0) return;
 
   if (bot._panelMeta.autoCmdRunning) return;
@@ -1273,24 +1284,37 @@ ipcMain.on("stop-selected", (e, { names, serverKey } = {}) => {
   emitBotStatus();
 });
 
-ipcMain.on("send-global-chat", (e, { names, msg }) => {
-  if (!Array.isArray(names)) return;
-
+ipcMain.on("send-global-chat", (e, { names, msg, serverKey } = {}) => {
   const text = String(msg ?? "").trim();
   if (!text) return;
 
-  names.forEach((n) => {
+  const targetServer = String(serverKey || "").toLowerCase();
+  const rawNames = Array.isArray(names) ? names : [];
+  const cfg = loadCfg();
+  const selectedInTarget = new Set(
+    targetServer === "smp" || targetServer === "sky"
+      ? (cfg?.servers?.[targetServer]?.selectedBots || [])
+      : []
+  );
+  const targets = rawNames.length > 0
+    ? rawNames
+    : Object.keys(activeBots).filter((name) => botServerMap[name] === targetServer);
+
+  targets
+    .filter((name) => !targetServer || botServerMap[name] === targetServer || selectedInTarget.has(name))
+    .forEach((n) => {
     const b = activeBots[n];
+    const logServer = botServerMap[n] || targetServer;
     if (!b) {
-      sendLogs("SYSTEM", `§8[Send] §7${n} đang OFFLINE / chưa spawn.`);
+      sendLogs("SYSTEM", `§8[Send] §7${n} đang OFFLINE / chưa spawn.`, "", logServer);
       return;
     }
     try {
       safeSwingArm(b);
       b.chat(text);
-      sendLogs(n, `§8[Send] §7${text}`);
+      sendLogs(n, `§8[Send] §7${text}`, "", logServer);
     } catch (err) {
-      sendLogs("SYSTEM", `§c[SendError] ${n}: ${err?.message || String(err)}`);
+      sendLogs("SYSTEM", `§c[SendError] ${n}: ${err?.message || String(err)}`, "", logServer);
     }
   });
 });

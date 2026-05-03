@@ -1185,12 +1185,23 @@ function stopAutoCmdTimers(bot) {
   } catch {}
 }
 
+function getAutoCmdsForBot(name, cfg) {
+  const perBot = runtimeBotCmdMap?.[name];
+  if (Array.isArray(perBot)) return perBot;
+
+  const serverKey = String(botServerMap?.[name] || "").toLowerCase();
+  if ((serverKey === "smp" || serverKey === "sky") && Array.isArray(cfg?.servers?.[serverKey]?.autoCmds)) {
+    return cfg.servers[serverKey].autoCmds;
+  }
+
+  return [];
+}
+
 function runAutoCmdOncePerSpawn(bot, name, cfg) {
   if (!autoCmdRuntimeEnabled) return;
   if (!cfg.autoCmdEnabled) return;
 
-  const perBot = runtimeBotCmdMap?.[name];
-  const cmdsRaw = Array.isArray(perBot) ? perBot : cfg.autoCmds;
+  const cmdsRaw = getAutoCmdsForBot(name, cfg);
   if (!Array.isArray(cmdsRaw) || cmdsRaw.length === 0) return;
 
   if (bot._panelMeta.autoCmdRunning) return;
@@ -1618,17 +1629,25 @@ app.post("/api/stop-selected", (req, res) => {
 });
 
 app.post("/api/bot/chat", (req, res) => {
-  const { message, names } = req.body || {};
+  const { message, names, serverKey } = req.body || {};
   const text = String(message ?? "").trim();
   if (!text) return res.json({ success: false, error: "Thiếu message" });
-  const list = Array.isArray(names) && names.length > 0 ? names : Object.keys(activeBots);
+  const targetServer = String(serverKey || "").toLowerCase();
+  const requestedNames = Array.isArray(names) ? names : [];
+  const list = (targetServer === "smp" || targetServer === "sky")
+    ? (requestedNames.length > 0
+      ? requestedNames.filter((name) => botServerMap[name] === targetServer || CFG.servers[targetServer]?.selectedBots?.includes(name))
+      : Object.keys(activeBots).filter((name) => botServerMap[name] === targetServer))
+    : requestedNames;
+
   list.forEach((n) => {
     const b = activeBots[n];
+    const logServer = botServerMap[n] || targetServer;
     if (b) {
       safeSwingArm(b);
-      try { b.chat(text); sendLogs(n, `§8[Send] §7${text}`); } catch (e) { sendLogs("SYSTEM", `§c[SendError] ${n}: ${e?.message || e}`); }
+      try { b.chat(text); sendLogs(n, `§8[Send] §7${text}`, "", logServer); } catch (e) { sendLogs("SYSTEM", `§c[SendError] ${n}: ${e?.message || e}`, "", logServer); }
     } else {
-      sendLogs("SYSTEM", `§8[Send] §7${n} đang OFFLINE.`);
+      sendLogs("SYSTEM", `§8[Send] §7${n} đang OFFLINE.`, "", logServer);
     }
   });
   res.json({ success: true });

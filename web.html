@@ -865,20 +865,26 @@
       return document.getElementById(serverKey === "sky" ? "logBoxSky" : "logBoxSmp");
     }
 
-    function getConsoleBoxesForLog(serverKey) {
-      const key = String(serverKey || "").toLowerCase();
-      if (key === "smp" || key === "sky") return [getConsoleBox(key)].filter(Boolean);
+    function getAllConsoleBoxes() {
       return CONSOLE_KEYS.map(getConsoleBox).filter(Boolean);
     }
 
+    function getConsoleBoxesForLog(serverKey) {
+      const key = String(serverKey || "").toLowerCase();
+      if (key === "smp" || key === "sky") return [getConsoleBox(key)].filter(Boolean);
+      return [];
+    }
+
     function clearConsole(serverKey) {
-      getConsoleBoxesForLog(serverKey).forEach((box) => {
+      const boxes = serverKey ? getConsoleBoxesForLog(serverKey) : getAllConsoleBoxes();
+      boxes.forEach((box) => {
         box.innerHTML = "";
       });
     }
 
     function exportConsole(serverKey) {
-      const lines = getConsoleBoxesForLog(serverKey)
+      const boxes = serverKey ? getConsoleBoxesForLog(serverKey) : getAllConsoleBoxes();
+      const lines = boxes
         .flatMap((box) => Array.from(box.querySelectorAll(".logLine")))
         .map((el) => el.innerText || el.textContent)
         .filter(Boolean);
@@ -1237,7 +1243,7 @@
         await fetch((window.BASE_PATH || '') + '/api/bot/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, names })
+          body: JSON.stringify({ serverKey, message, names })
         });
 
         chatHistory[serverKey].push(message);

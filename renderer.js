@@ -147,10 +147,14 @@ function getConsoleBox(serverKey) {
   return document.getElementById(serverKey === "sky" ? "logBoxSky" : "logBoxSmp");
 }
 
+function getAllConsoleBoxes() {
+  return CONSOLE_KEYS.map(getConsoleBox).filter(Boolean);
+}
+
 function getConsoleBoxesForLog(serverKey) {
   const key = String(serverKey || "").toLowerCase();
   if (key === "smp" || key === "sky") return [getConsoleBox(key)].filter(Boolean);
-  return CONSOLE_KEYS.map(getConsoleBox).filter(Boolean);
+  return [];
 }
 
 function bindConsoleScrollState() {
@@ -427,13 +431,14 @@ function playKickSound() {
 }
 
 function clearConsole(serverKey = "") {
-  getConsoleBoxesForLog(serverKey).forEach((box) => {
+  const boxes = serverKey ? getConsoleBoxesForLog(serverKey) : getAllConsoleBoxes();
+  boxes.forEach((box) => {
     box.innerHTML = "";
   });
 }
 
 function exportLog(serverKey = "") {
-  const boxes = getConsoleBoxesForLog(serverKey);
+  const boxes = serverKey ? getConsoleBoxesForLog(serverKey) : getAllConsoleBoxes();
   const lines = boxes
     .flatMap((box) => Array.from(box.querySelectorAll(".logLine")))
     .map((el) => el.innerText || el.textContent)
@@ -706,7 +711,7 @@ function sendChat(serverKey = "smp") {
   if (!msg) return;
 
   const names = getSelectedChatNames(serverKey);
-  ipcRenderer.send("send-global-chat", { names, msg });
+  ipcRenderer.send("send-global-chat", { serverKey, names, msg });
 
   chatHistory[serverKey].push(msg);
   if (chatHistory[serverKey].length > 200) chatHistory[serverKey].shift();
