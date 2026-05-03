@@ -1,5 +1,9 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const mineflayer = require("mineflayer");
+let mineflayerPathfinder = null;
+try {
+  mineflayerPathfinder = require("mineflayer-pathfinder");
+} catch {}
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -20,11 +24,30 @@ const BRAND_CHANNEL_RE = /^(?:MC\|Brand|minecraft:brand)$/i;
 const ALLOW_PLUGIN_CHANNELS = String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
 const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL ?? "1").trim() !== "0";
 const LOG_PLUGIN_CHANNELS = String(process.env.MC_LOG_PLUGIN_CHANNELS || "").trim() === "1";
+const WHISPER_REPLY = String(process.env.MC_WHISPER_REPLY || "").trim();
+const NATURAL_BEHAVIOR_DEFAULTS = Object.freeze({
+  enabled: true,
+  pathfinder: true,
+  brandOnLogin: true,
+  reconnectDelay: 5000,
+  headTurnMinMs: 800,
+  headTurnMaxMs: 1200,
+  lookMinMs: 1000,
+  lookMaxMs: 2000,
+  jumpMinMs: 30000,
+  jumpMaxMs: 60000,
+  sneakMinMs: 45000,
+  sneakMaxMs: 90000,
+  armSwingMinMs: 80,
+  armSwingMaxMs: 220,
+});
 const STEALTH_DISABLED_INTERNAL_PLUGINS = Object.freeze({
   book: false,
   anvil: false,
   villager: false,
   command_block: false,
+  pathfinder: false,
+  pvp: false,
 });
 const EXTRA_ALLOWED_CHANNELS = new Set(
   String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
@@ -98,9 +121,17 @@ function logChatDebug(botName, msgStr, player, rawJson) {
 }
 
 // ✅ gửi thêm player (không phá renderer cũ)
-function sendLogs(user, msg, player = "") {
-  const server = botServerMap?.[user] || "";
-  safeSend("log", { user, msg, server, player });
+function normalizeLogText(msg) {
+  return String(msg ?? "")
+    .replaceAll("Ã‚Â§", "§")
+    .replaceAll("Â§", "§")
+    .replaceAll("Ã‚Â»", "»")
+    .replaceAll("Â»", "»");
+}
+
+function sendLogs(user, msg, player = "", serverOverride = "") {
+  const server = serverOverride || botServerMap?.[user] || "";
+  safeSend("log", { user, msg: normalizeLogText(msg), server, player });
 }
 
 function normalizePayloadChannel(channel) {
@@ -119,6 +150,8 @@ function shouldBlockCustomPayloadChannel(channel) {
 function installPayloadGuard(bot, botName) {
   const client = bot?._client;
   if (!client) return;
+  if (client.__oceandeepPayloadGuardInstalled) return;
+  client.__oceandeepPayloadGuardInstalled = true;
 
   const blockedLogDedup = new Set();
   const allowedLogDedup = new Set();
@@ -164,6 +197,19 @@ function installPayloadGuard(bot, botName) {
     };
   }
 
+  if (typeof client.unregisterChannel === "function") {
+    const originalUnregisterChannel = client.unregisterChannel.bind(client);
+    client.unregisterChannel = (channel, custom) => {
+      const channelName = normalizePayloadChannel(channel);
+      if (shouldBlockCustomPayloadChannel(channelName)) {
+        logBlocked("unregisterChannel", channelName);
+        return;
+      }
+      logAllowed("unregisterChannel", channelName);
+      return originalUnregisterChannel(channelName, custom);
+    };
+  }
+
   if (typeof client.write === "function") {
     const originalWrite = client.write.bind(client);
     client.write = (packetName, payload) => {
@@ -178,6 +224,28 @@ function installPayloadGuard(bot, botName) {
       return originalWrite(packetName, payload);
     };
   }
+
+  if (typeof client.emit === "function") {
+    const originalEmit = client.emit.bind(client);
+    client.emit = (event, ...args) => {
+      if (String(event || "").trim() === "custom_payload") {
+        const channelName = normalizePayloadChannel(args?.[0]?.channel);
+        if (shouldBlockCustomPayloadChannel(channelName)) {
+          logBlocked("recv custom_payload", channelName);
+          return false;
+        }
+        logAllowed("recv custom_payload", channelName);
+      }
+      return originalEmit(event, ...args);
+    };
+  }
+}
+
+function armPayloadGuard(bot, botName) {
+  if (typeof bot?.prependOnceListener === "function") {
+    bot.prependOnceListener("inject_allowed", () => installPayloadGuard(bot, botName));
+  }
+  installPayloadGuard(bot, botName);
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -237,6 +305,174 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (mx - mn + 1) + mn);
 }
 
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+function getNaturalBehaviorCfg(cfg = {}) {
+  const raw = cfg.naturalBehavior && typeof cfg.naturalBehavior === "object" ? cfg.naturalBehavior : {};
+  const out = { ...NATURAL_BEHAVIOR_DEFAULTS, ...raw };
+  Object.keys(NATURAL_BEHAVIOR_DEFAULTS).forEach((key) => {
+    if (typeof NATURAL_BEHAVIOR_DEFAULTS[key] === "number") {
+      const n = Number(out[key]);
+      out[key] = Number.isFinite(n) ? n : NATURAL_BEHAVIOR_DEFAULTS[key];
+    }
+  });
+  out.enabled = raw.enabled !== undefined ? !!raw.enabled : NATURAL_BEHAVIOR_DEFAULTS.enabled;
+  out.pathfinder = raw.pathfinder !== undefined ? !!raw.pathfinder : NATURAL_BEHAVIOR_DEFAULTS.pathfinder;
+  out.brandOnLogin = raw.brandOnLogin !== undefined ? !!raw.brandOnLogin : NATURAL_BEHAVIOR_DEFAULTS.brandOnLogin;
+  out.reconnectDelay = Number(cfg.reconnectDelay ?? raw.reconnectDelay ?? out.reconnectDelay);
+  if (!Number.isFinite(out.reconnectDelay) || out.reconnectDelay < 0) out.reconnectDelay = NATURAL_BEHAVIOR_DEFAULTS.reconnectDelay;
+  return out;
+}
+
+function writeVarIntBuffer(value) {
+  const bytes = [];
+  let v = Number(value) >>> 0;
+  do {
+    let temp = v & 0x7f;
+    v >>>= 7;
+    if (v !== 0) temp |= 0x80;
+    bytes.push(temp);
+  } while (v !== 0);
+  return Buffer.from(bytes);
+}
+
+function encodeBrandPayload(brand) {
+  const brandBytes = Buffer.from(String(brand || "vanilla"), "utf8");
+  return Buffer.concat([writeVarIntBuffer(brandBytes.length), brandBytes]);
+}
+
+function pushPanelTimer(bot, timer) {
+  if (!bot?._panelMeta) return;
+  if (!Array.isArray(bot._panelMeta.naturalTimers)) bot._panelMeta.naturalTimers = [];
+  bot._panelMeta.naturalTimers.push(timer);
+}
+
+function setPanelTimer(bot, fn, delayMs) {
+  const timer = setTimeout(async () => {
+    try {
+      await fn();
+    } finally {
+      if (Array.isArray(bot?._panelMeta?.naturalTimers)) {
+        bot._panelMeta.naturalTimers = bot._panelMeta.naturalTimers.filter((t) => t !== timer);
+      }
+    }
+  }, Math.max(0, Number(delayMs) || 0));
+  pushPanelTimer(bot, timer);
+  return timer;
+}
+
+function loadPathfinderPlugin(bot, botName, cfg) {
+  try {
+    const natural = getNaturalBehaviorCfg(cfg);
+    const plugin = mineflayerPathfinder?.pathfinder;
+    if (!natural.pathfinder || typeof plugin !== "function" || typeof bot?.loadPlugin !== "function") return;
+    bot.loadPlugin(plugin);
+    sendLogs(botName, "§8[Move] pathfinder loaded");
+  } catch (e) {
+    sendLogs(botName, `§8[Move] pathfinder skip: ${e?.message || String(e)}`);
+  }
+}
+
+function installVanillaBrandOnLogin(bot, botName, cfg) {
+  try {
+    const natural = getNaturalBehaviorCfg(cfg);
+    if (!natural.brandOnLogin) return;
+    const client = bot?._client;
+    if (!client || typeof client.on !== "function") return;
+    client.on("login", async () => {
+      try {
+        await sleepMs(randInt(40, 160));
+        client.write("custom_payload", {
+          channel: "minecraft:brand",
+          data: encodeBrandPayload(DEFAULT_CLIENT_BRAND || "vanilla"),
+        });
+        sendLogs(botName, `§8[Brand] ${DEFAULT_CLIENT_BRAND || "vanilla"}`);
+      } catch (e) {
+        sendLogs(botName, `§8[Brand] skip: ${e?.message || String(e)}`);
+      }
+    });
+  } catch {}
+}
+
+async function safeSwingArm(bot) {
+  try {
+    const natural = getNaturalBehaviorCfg();
+    await sleepMs(randInt(natural.armSwingMinMs, natural.armSwingMaxMs));
+    if (typeof bot?.swingArm === "function") bot.swingArm("right", true);
+  } catch {}
+}
+
+function scheduleNaturalLoop(bot, botName, cfg, minKey, maxKey, action) {
+  const natural = getNaturalBehaviorCfg(cfg);
+  const run = async () => {
+    try {
+      if (bot?._panelMeta?.naturalStopped) return;
+      await action(natural);
+    } catch (e) {
+      sendLogs(botName, `§8[AFK] ${e?.message || String(e)}`);
+    } finally {
+      if (!bot?._panelMeta?.naturalStopped) {
+        setPanelTimer(bot, run, randInt(natural[minKey], natural[maxKey]));
+      }
+    }
+  };
+  setPanelTimer(bot, run, randInt(natural[minKey], natural[maxKey]));
+}
+
+function startNaturalBehavior(bot, botName, cfg) {
+  try {
+    const natural = getNaturalBehaviorCfg(cfg);
+    if (!natural.enabled || !bot?._panelMeta) return;
+    bot._panelMeta.naturalStopped = false;
+
+    scheduleNaturalLoop(bot, botName, cfg, "headTurnMinMs", "headTurnMaxMs", async () => {
+      const yaw = Number(bot?.entity?.yaw || 0) + (Math.random() * 0.04 - 0.02);
+      const pitch = Number(bot?.entity?.pitch || 0);
+      if (typeof bot?.look === "function") await bot.look(yaw, pitch, true);
+    });
+
+    scheduleNaturalLoop(bot, botName, cfg, "lookMinMs", "lookMaxMs", async () => {
+      const yaw = Number(bot?.entity?.yaw || 0) + (Math.random() * 0.08 - 0.04);
+      const pitch = Number(bot?.entity?.pitch || 0) + (Math.random() * 0.02 - 0.01);
+      if (typeof bot?.look === "function") await bot.look(yaw, pitch, true);
+    });
+
+    scheduleNaturalLoop(bot, botName, cfg, "jumpMinMs", "jumpMaxMs", async () => {
+      if (typeof bot?.setControlState !== "function") return;
+      bot.setControlState("jump", true);
+      await sleepMs(randInt(120, 260));
+      bot.setControlState("jump", false);
+    });
+
+    scheduleNaturalLoop(bot, botName, cfg, "sneakMinMs", "sneakMaxMs", async () => {
+      if (typeof bot?.setControlState !== "function") return;
+      bot.setControlState("sneak", true);
+      await sleepMs(randInt(800, 2400));
+      bot.setControlState("sneak", false);
+    });
+  } catch (e) {
+    sendLogs(botName, `§8[AFK] disabled: ${e?.message || String(e)}`);
+  }
+}
+
+function maybeReplyToWhisper(bot, botName, message) {
+  try {
+    if (!WHISPER_REPLY || !bot || !message) return;
+    const text = stripMcAndAnsiCodes(message).toLowerCase();
+    if (!/(whisper|whispers|msg|tell|->|»)/i.test(text)) return;
+    setPanelTimer(bot, async () => {
+      try {
+        if (bot?._panelMeta?.naturalStopped) return;
+        safeSwingArm(bot);
+        bot.chat(WHISPER_REPLY.slice(0, 255));
+        sendLogs(botName, `§8[WhisperReply] §7${WHISPER_REPLY.slice(0, 80)}`);
+      } catch {}
+    }, randInt(1200, 3500));
+  } catch {}
+}
+
 function normalizeMcVersion(v) {
   const s = String(v ?? "").trim();
   if (!s || s.toLowerCase() === "auto") return "";
@@ -258,6 +494,34 @@ function safeParseJson(x) {
 function isMcUsername(name) {
   const s = String(name || "").trim();
   return s.length >= 3 && s.length <= 16 && /^[A-Za-z0-9_]+$/.test(s);
+}
+
+function resolvePlayerNameFromSender(bot, sender) {
+  const raw = String(sender || "").trim();
+  if (!raw) return "";
+  if (isMcUsername(raw)) return raw;
+
+  const direct = bot?.uuidToUsername?.[raw];
+  if (isMcUsername(direct)) return direct;
+
+  const normalized = raw.toLowerCase();
+  for (const [uuid, username] of Object.entries(bot?.uuidToUsername || {})) {
+    if (String(uuid || "").toLowerCase() === normalized && isMcUsername(username)) return username;
+  }
+
+  const players = Object.values(bot?.players || {});
+  for (const player of players) {
+    if (String(player?.uuid || "").toLowerCase() === normalized && isMcUsername(player?.username)) {
+      return player.username;
+    }
+  }
+
+  try {
+    const player = typeof bot?._playerFromUUID === "function" ? bot._playerFromUUID(raw) : null;
+    if (isMcUsername(player?.username)) return player.username;
+  } catch {}
+
+  return "";
 }
 
 // Lấy plain text từ chat component (đệ quy)
@@ -343,7 +607,10 @@ function detectPlayerFromAny(msgStr, jsonMaybe) {
 }
 
 // Chỉ lấy tên từ sender server gửi (with[0] / insertion), KHÔNG parse từ nội dung chat
-function getSenderFromPacketOnly(jsonMaybe, msgObj) {
+function getSenderFromPacketOnly(jsonMaybe, msgObj, bot, sender) {
+  const senderName = resolvePlayerNameFromSender(bot, sender);
+  if (senderName) return senderName;
+
   const j = safeParseJson(jsonMaybe);
   if (j && typeof j === "object" && typeof j.translate === "string" && Array.isArray(j.with) && j.with.length > 0) {
     const senderText = componentToPlainText(j.with[0]).trim();
@@ -396,6 +663,7 @@ function loadCfg() {
 
     firstCmdDelay: 1.5,
 
+    reconnectDelay: NATURAL_BEHAVIOR_DEFAULTS.reconnectDelay,
     loginDelay: 1,
     minOn: 30,
     maxOn: 60,
@@ -453,6 +721,8 @@ function loadCfg() {
 
     cfg.firstCmdDelay = Number(cfg.firstCmdDelay);
     if (!Number.isFinite(cfg.firstCmdDelay) || cfg.firstCmdDelay < 0) cfg.firstCmdDelay = def.firstCmdDelay;
+    cfg.reconnectDelay = Number(cfg.reconnectDelay);
+    if (!Number.isFinite(cfg.reconnectDelay) || cfg.reconnectDelay < 0) cfg.reconnectDelay = def.reconnectDelay;
 
     cfg.mcVersion = normalizeMcVersion(cfg.mcVersion);
 
@@ -570,7 +840,16 @@ function stopAutoCmdTimers(bot) {
       bot._panelMeta.autoCmdTimers.forEach((t) => clearTimeout(t));
       bot._panelMeta.autoCmdTimers = [];
     }
+    if (bot?._panelMeta?.naturalTimers) {
+      bot._panelMeta.naturalTimers.forEach((t) => clearTimeout(t));
+      bot._panelMeta.naturalTimers = [];
+    }
+    if (typeof bot?.setControlState === "function") {
+      try { bot.setControlState("jump", false); } catch {}
+      try { bot.setControlState("sneak", false); } catch {}
+    }
     if (bot?._panelMeta) bot._panelMeta.autoCmdRunning = false;
+    if (bot?._panelMeta) bot._panelMeta.naturalStopped = true;
   } catch {}
 }
 
@@ -608,7 +887,7 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
   const t0 = setTimeout(() => {
     let i = 0;
 
-    const runNext = () => {
+    const runNext = async () => {
       if (!activeBots[name]) return;
       if (!desiredBots.has(name)) return;
       if (!autoCmdRuntimeEnabled) return;
@@ -616,6 +895,7 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
 
       const cmd = cmds[i++];
       try {
+        await safeSwingArm(bot);
         bot.chat(cmd);
         sendLogs(name, `§8[AutoCmd] §7${cmd}`);
       } catch {}
@@ -739,12 +1019,16 @@ function spawnBot(name) {
     auth: "offline",
     brand: DEFAULT_CLIENT_BRAND,
     plugins: { ...STEALTH_DISABLED_INTERNAL_PLUGINS },
+    hideErrors: false,
+    checkTimeoutInterval: 30000,
   };
   if (mcVersion) botOpts.version = mcVersion;
 
   const bot = mineflayer.createBot(botOpts);
-  installPayloadGuard(bot, name);
-  bot._panelMeta = { autoCmdTimers: [], autoCmdRunning: false };
+  loadPathfinderPlugin(bot, name, cfg);
+  installVanillaBrandOnLogin(bot, name, cfg);
+  armPayloadGuard(bot, name);
+  bot._panelMeta = { autoCmdTimers: [], naturalTimers: [], autoCmdRunning: false, naturalStopped: false };
 
   let quitTimer = null;
 
@@ -753,6 +1037,7 @@ function spawnBot(name) {
     emitBotStatus();
     sendLogs(name, `§a✔ Đã vào server! §8(Ver: ${mcVersion || "AUTO"})`);
 
+    startNaturalBehavior(bot, name, cfg);
     runAutoCmdOncePerSpawn(bot, name, cfg);
 
     // Random thời gian online riêng từng bot, thêm jitter 0–12s để không rời hàng loạt
@@ -777,7 +1062,7 @@ function spawnBot(name) {
       const msgStr = String(message ?? "");
       const rawJson = msg && typeof msg === "object" && msg.json ? msg.json : (typeof msg === "object" && msg !== null && !Array.isArray(msg) ? msg : null);
       // CHAT: chỉ lấy tên từ packet/JSON (with[0]), KHÔNG parse từ nội dung → tránh [ngon], [lam] sai
-      const player = getSenderFromPacketOnly(rawJson, msg);
+      const player = getSenderFromPacketOnly(rawJson, msg, bot, packetSender);
 
       // Dedupe: cùng bot + cùng nội dung trong CHAT_DEDUPE_MS chỉ gửi 1 lần
       const norm = stripMcAndAnsiCodes(msgStr).trim().slice(0, 200);
@@ -793,6 +1078,7 @@ function spawnBot(name) {
 
       logChatDebug(name, msgStr, player, rawJson);
       sendLogs(name, msgStr, player);
+      maybeReplyToWhisper(bot, name, msgStr);
     } catch {}
   });
 
@@ -845,15 +1131,15 @@ function spawnBot(name) {
       const minOff = Math.max(0, Math.min(86400, parseInt(current.minOff) || 0));
       const maxOff = Math.max(0, Math.min(86400, parseInt(current.maxOff) || 0));
       // Random thời gian nghỉ riêng từng bot, thêm jitter 0–8s để không vào lại hàng loạt
-      const timeOffSec = randInt(minOff, maxOff || minOff);
-      const jitterOffSec = randInt(0, 8);
-      const timeOffMs = (timeOffSec + jitterOffSec) * 1000;
+      const reconnectDelayMs = getNaturalBehaviorCfg(current).reconnectDelay;
+      const timeOffMs = reconnectDelayMs + randInt(250, 1250);
       sendLogs(name, `§7Nghỉ ${Math.round(timeOffMs / 1000)}s...`);
 
       setTimeout(() => {
         if (desiredBots.has(name)) spawnBot(name);
       }, timeOffMs);
     } else {
+      setTimeout(() => delete botServerMap[name], 0);
       sendLogs(name, "§7Đã dừng (không còn được tick).");
     }
   });
@@ -899,9 +1185,52 @@ ipcMain.on("run-all", (e, payload) => {
   emitBotStatus();
 });
 
+ipcMain.on("run-server", (e, payload = {}) => {
+  const cfg = payload?.cfg;
+  const serverKey = String(payload?.serverKey || "").toLowerCase() === "sky" ? "sky" : "smp";
+  const botCmdMap = payload?.botCmdMap || {};
+
+  if (!cfg || typeof cfg !== "object") return;
+
+  runtimeBotCmdMap = {
+    ...runtimeBotCmdMap,
+    ...(botCmdMap && typeof botCmdMap === "object" ? botCmdMap : {}),
+  };
+
+  saveCfg(cfg);
+  const safe = loadCfg();
+  const selected = Array.isArray(cfg?.servers?.[serverKey]?.selectedBots)
+    ? cfg.servers[serverKey].selectedBots
+    : [];
+
+  autoCmdRuntimeEnabled = !!safe.autoCmdEnabled;
+
+  const loginDelaySec = Math.max(0, parseInt(cfg.loginDelay, 10) || 0);
+  const preConnectDelaySec = Math.max(0, Number(cfg.preConnectDelay) || 0);
+  const loginDelayMs = loginDelaySec * 1000;
+  const MIN_FIRST_CONNECT_MS = 5000;
+  const preDelayMs = Math.max(MIN_FIRST_CONNECT_MS, preConnectDelaySec * 1000);
+
+  lastAllOnlineSent = false;
+  selected.forEach((name, i) => {
+    desiredBots.add(name);
+    botServerMap[name] = serverKey;
+    sendLogs(name, `§aĐang khởi động bot ${serverKey === "smp" ? "SMP" : "Skyblock"}...`);
+    setTimeout(() => {
+      if (desiredBots.has(name)) spawnBot(name);
+    }, preDelayMs + i * loginDelayMs);
+  });
+  emitBotStatus();
+});
+
 ipcMain.on("stop-all", () => {
   desiredBots.clear();
+  lastAllOnlineSent = false;
   emitBotStatus();
+
+  Object.keys(botServerMap).forEach((name) => {
+    if (!activeBots[name]) delete botServerMap[name];
+  });
 
   Object.values(activeBots).forEach((b) => {
     stopAutoCmdTimers(b);
@@ -910,17 +1239,32 @@ ipcMain.on("stop-all", () => {
   activeBots = {};
 });
 
-ipcMain.on("stop-selected", (e, { names }) => {
-  if (!Array.isArray(names)) return;
+ipcMain.on("stop-selected", (e, { names, serverKey } = {}) => {
+  const targets = new Set();
+  const targetServer = String(serverKey || "").toLowerCase();
 
-  names.forEach((n) => {
+  if (targetServer === "smp" || targetServer === "sky") {
+    Object.entries(botServerMap).forEach(([name, mappedServer]) => {
+      if (mappedServer === targetServer) targets.add(name);
+    });
+    Object.keys(activeBots).forEach((name) => {
+      if (botServerMap[name] === targetServer) targets.add(name);
+    });
+  } else if (Array.isArray(names)) {
+    names.forEach((name) => targets.add(name));
+  }
+
+  targets.forEach((n) => {
     desiredBots.delete(n);
     const b = activeBots[n];
     if (b) {
       stopAutoCmdTimers(b);
       try { b.quit(); } catch {}
+    } else {
+      delete botServerMap[n];
     }
   });
+  lastAllOnlineSent = false;
   emitBotStatus();
 });
 
@@ -937,6 +1281,7 @@ ipcMain.on("send-global-chat", (e, { names, msg }) => {
       return;
     }
     try {
+      safeSwingArm(b);
       b.chat(text);
       sendLogs(n, `§8[Send] §7${text}`);
     } catch (err) {

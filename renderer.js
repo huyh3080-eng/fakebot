@@ -23,6 +23,7 @@ let CFG = {
   autoCmdDelay: 1,
 
   firstCmdDelay: 1.5,
+  reconnectDelay: 5000,
 
   servers: {
     smp: { accounts: [], selectedBots: [], autoCmds: [] },
@@ -39,10 +40,11 @@ let CFG = {
 let UI_SMP = new Set();
 let UI_SKY = new Set();
 
-let chatHistory = [];
-let historyIndex = -1;
+const chatHistory = { smp: [], sky: [] };
+const historyIndex = { smp: -1, sky: -1 };
 
-let isPinnedToBottom = true;
+const CONSOLE_KEYS = ["smp", "sky"];
+const consolePinned = { smp: true, sky: true };
 
 const RECENT_LOGS = new Map();
 const DEDUPE_WINDOW_MS = 2500;
@@ -139,6 +141,29 @@ function mcToAnsi(input) {
 }
 function formatConsoleHtml(rawMsg) {
   return ansi.toHtml(mcToAnsi(rawMsg));
+}
+
+function getConsoleBox(serverKey) {
+  return document.getElementById(serverKey === "sky" ? "logBoxSky" : "logBoxSmp");
+}
+
+function getConsoleBoxesForLog(serverKey) {
+  const key = String(serverKey || "").toLowerCase();
+  if (key === "smp" || key === "sky") return [getConsoleBox(key)].filter(Boolean);
+  return CONSOLE_KEYS.map(getConsoleBox).filter(Boolean);
+}
+
+function bindConsoleScrollState() {
+  CONSOLE_KEYS.forEach((serverKey) => {
+    const box = getConsoleBox(serverKey);
+    if (!box || box.dataset.scrollBound === "1") return;
+    box.dataset.scrollBound = "1";
+    box.addEventListener("scroll", () => {
+      const threshold = 40;
+      const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
+      consolePinned[serverKey] = dist <= threshold;
+    });
+  });
 }
 
 // Minecraft Java: tên 3–16 ký tự, tránh nhầm nội dung chat (vd: "a") thành tên
@@ -273,14 +298,7 @@ async function loadConfig() {
   renderSmpCmds();
   renderSkyCmds();
 
-  const box = document.getElementById("logBox");
-  if (box) {
-    box.addEventListener("scroll", () => {
-      const threshold = 40;
-      const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
-      isPinnedToBottom = dist <= threshold;
-    });
-  }
+  bindConsoleScrollState();
 }
 
 function buildRunPayloadFromUI() {
@@ -408,21 +426,26 @@ function playKickSound() {
   } catch (_) {}
 }
 
-function clearConsole() {
-  const box = document.getElementById("logBox");
-  if (box) box.innerHTML = "";
+function clearConsole(serverKey = "") {
+  getConsoleBoxesForLog(serverKey).forEach((box) => {
+    box.innerHTML = "";
+  });
 }
 
-function exportLog() {
-  const box = document.getElementById("logBox");
-  if (!box || !box.children.length) return;
-  const lines = Array.from(box.querySelectorAll(".logLine")).map((el) => el.innerText || el.textContent).filter(Boolean);
+function exportLog(serverKey = "") {
+  const boxes = getConsoleBoxesForLog(serverKey);
+  const lines = boxes
+    .flatMap((box) => Array.from(box.querySelectorAll(".logLine")))
+    .map((el) => el.innerText || el.textContent)
+    .filter(Boolean);
+  if (!lines.length) return;
   const text = lines.join("\n");
   const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `console-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`;
+  const suffix = serverKey === "smp" || serverKey === "sky" ? `-${serverKey}` : "";
+  a.download = `console${suffix}-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -656,7 +679,7 @@ function runOnly(serverKey) {
 
   syncAutoCmdDelayCompat();
   saveConfig();
-  ipcRenderer.send("run-all", { cfg: CFG, botCmdMap });
+  ipcRenderer.send("run-server", { serverKey, cfg: CFG, botCmdMap });
 }
 
 function stopAll() {
@@ -665,35 +688,77 @@ function stopAll() {
 }
 
 function stopOnly(serverKey) {
-  const names = serverKey === "smp" ? Array.from(UI_SMP) : Array.from(UI_SKY);
-  ipcRenderer.send("stop-selected", { names });
+  ipcRenderer.send("stop-selected", { serverKey });
 }
 
 // ===== CHAT =====
-function sendChat() {
-  const input = document.getElementById("chatInput");
+function getChatInput(serverKey) {
+  return document.getElementById(serverKey === "sky" ? "chatInputSky" : "chatInputSmp");
+}
+
+function getSelectedChatNames(serverKey) {
+  return serverKey === "sky" ? Array.from(UI_SKY) : Array.from(UI_SMP);
+}
+
+function sendChat(serverKey = "smp") {
+  const input = getChatInput(serverKey);
   const msg = (input?.value || "").trim();
   if (!msg) return;
 
-  const names = [...Array.from(UI_SMP), ...Array.from(UI_SKY)];
+  const names = getSelectedChatNames(serverKey);
   ipcRenderer.send("send-global-chat", { names, msg });
 
-  chatHistory.push(msg);
-  if (chatHistory.length > 200) chatHistory.shift();
-  historyIndex = chatHistory.length;
+  chatHistory[serverKey].push(msg);
+  if (chatHistory[serverKey].length > 200) chatHistory[serverKey].shift();
+  historyIndex[serverKey] = chatHistory[serverKey].length;
 
   if (input) input.value = "";
+}
+
+function bindChatInput(serverKey) {
+  const input = getChatInput(serverKey);
+  if (!input || input.dataset.chatBound === "1") return;
+  input.dataset.chatBound = "1";
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      sendChat(serverKey);
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      if (chatHistory[serverKey].length === 0) return;
+      historyIndex[serverKey]--;
+      if (historyIndex[serverKey] < 0) historyIndex[serverKey] = 0;
+      input.value = chatHistory[serverKey][historyIndex[serverKey]] || "";
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      if (chatHistory[serverKey].length === 0) return;
+      historyIndex[serverKey]++;
+      if (historyIndex[serverKey] >= chatHistory[serverKey].length) {
+        historyIndex[serverKey] = chatHistory[serverKey].length;
+        input.value = "";
+      } else {
+        input.value = chatHistory[serverKey][historyIndex[serverKey]] || "";
+      }
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+      e.preventDefault();
+    }
+  });
 }
 
 // ===== CONSOLE =====
 const MAX_LINES = 1200;
 
 ipcRenderer.on("log", (e, payload) => {
-  const box = document.getElementById("logBox");
-  if (!box) return;
-
   const { user, msg, server } = payload || {};
   const botName = String(user || "unknown");
+  const boxes = getConsoleBoxesForLog(server);
+  if (!boxes.length) return;
 
   const dedupeKey = `${server || ""}|${botName}|${String(msg ?? "").trim()}`;
   if (shouldDedupe(dedupeKey)) return;
@@ -709,19 +774,23 @@ ipcRenderer.on("log", (e, payload) => {
 
   const botTag = `<span style="color:#a78bfa"><b>[BOT:${escapeHtml(botName)}]</b></span>`;
 
-  const line = document.createElement("div");
-  line.className = "logLine";
-  line.innerHTML =
+  const html =
     `<span style="color:#64748b">[${time}]</span> ` +
     `${serverTag} ` +
     `${botTag}` +
     ` <span style="color:#64748b">:</span> ` +
     `${formatConsoleHtml(msg)}`;
 
-  box.appendChild(line);
+  boxes.forEach((box) => {
+    const serverKey = box.id === "logBoxSky" ? "sky" : "smp";
+    const line = document.createElement("div");
+    line.className = "logLine";
+    line.innerHTML = html;
+    box.appendChild(line);
 
-  while (box.children.length > MAX_LINES) box.removeChild(box.firstChild);
-  if (isPinnedToBottom) box.scrollTop = box.scrollHeight;
+    while (box.children.length > MAX_LINES) box.removeChild(box.firstChild);
+    if (consolePinned[serverKey]) box.scrollTop = box.scrollHeight;
+  });
 });
 
 ipcRenderer.on("bot-status", (e, { online = 0, total = 0 } = {}) => {
@@ -795,13 +864,14 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("btnRunAll")?.addEventListener("click", runAll);
   document.getElementById("btnStopAll")?.addEventListener("click", stopAll);
-  document.getElementById("btnSendChat")?.addEventListener("click", sendChat);
+  document.getElementById("btnSendChatSmp")?.addEventListener("click", () => sendChat("smp"));
+  document.getElementById("btnSendChatSky")?.addEventListener("click", () => sendChat("sky"));
 
   document.getElementById("btnOpenDataFolder")?.addEventListener("click", async () => {
     await ipcRenderer.invoke("open-user-data-folder");
   });
-  document.getElementById("btnClearConsole")?.addEventListener("click", clearConsole);
-  document.getElementById("btnExportLog")?.addEventListener("click", exportLog);
+  document.getElementById("btnClearConsole")?.addEventListener("click", () => clearConsole());
+  document.getElementById("btnExportLog")?.addEventListener("click", () => exportLog());
 
   document.getElementById("btnExportConfig")?.addEventListener("click", async () => {
     const content = await ipcRenderer.invoke("export-config");
@@ -854,39 +924,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (hasBots) setTimeout(runAll, 2500);
   }
 
-  document.getElementById("chatInput")?.addEventListener("keydown", (e) => {
-    const input = e.target;
-
-    if (e.key === "Enter") {
-      sendChat();
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === "ArrowUp") {
-      if (chatHistory.length === 0) return;
-      historyIndex--;
-      if (historyIndex < 0) historyIndex = 0;
-      input.value = chatHistory[historyIndex] || "";
-      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === "ArrowDown") {
-      if (chatHistory.length === 0) return;
-      historyIndex++;
-      if (historyIndex >= chatHistory.length) {
-        historyIndex = chatHistory.length;
-        input.value = "";
-      } else {
-        input.value = chatHistory[historyIndex] || "";
-      }
-      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-      e.preventDefault();
-      return;
-    }
-  });
+  bindChatInput("smp");
+  bindChatInput("sky");
 
   document.getElementById("botNameSmp")?.addEventListener("keydown", (e) => { if (e.key === "Enter") addBotTo("smp"); });
   document.getElementById("botNameSky")?.addEventListener("keydown", (e) => { if (e.key === "Enter") addBotTo("sky"); });

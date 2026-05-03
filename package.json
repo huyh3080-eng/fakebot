@@ -20,7 +20,8 @@
     "electron": "^41.1.0",
     "express": "^4.22.1",
     "js-yaml": "^4.1.0",
-    "mineflayer": "^4.33.0",
+    "mineflayer": "^4.37.1",
+    "mineflayer-pathfinder": "^2.4.5",
     "ws": "^8.19.0"
   },
   "devDependencies": {

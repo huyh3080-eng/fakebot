@@ -261,8 +261,48 @@
       min-height:0;
     }
 
+    .consoleGrid{
+      flex:0 0 auto;
+      min-height:0;
+      display:grid;
+      grid-template-rows:repeat(2, auto);
+      gap:8px;
+    }
+
+    .consolePanel{
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    .consolePanelHeader{
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .consolePanelTitle{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-size:13px;
+      font-weight:700;
+      color:#e5e7eb;
+    }
+
+    .consoleActions{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+
     .logBox{
-      flex:1;
+      flex:0 0 auto;
+      height:clamp(480px, 52vh, 660px);
+      min-height:480px;
       overflow-y:auto;
       overflow-x:hidden;
       background: rgba(2, 6, 18, .85);
@@ -287,6 +327,18 @@
       min-width: 140px;
       height: 54px;
       font-size: 15px;
+    }
+
+    .consolePanel .chatWrap{ gap:8px; }
+    .consolePanel .chatInputBig{
+      height:40px;
+      font-size:13px;
+      padding:9px 10px;
+    }
+    .consolePanel .sendBtnBig{
+      min-width:82px;
+      height:40px;
+      font-size:13px;
     }
 
     .helpBox{
@@ -648,9 +700,39 @@
         </div>
         <input type="file" id="inputImportConfig" accept=".yml,.yaml" style="display:none" />
 
-        <div id="logBox" class="logBox"></div>
+        <div class="consoleGrid">
+          <section class="consolePanel" aria-label="Console SMP">
+            <div class="consolePanelHeader">
+              <div class="consolePanelTitle">
+                <span class="pill smp">SMP</span>
+                <span>Console SMP</span>
+              </div>
+            </div>
+            <div id="logBoxSmp" class="logBox"></div>
+            <div class="chatWrap">
+              <input id="chatInputSmp" class="chatInputBig"
+                     placeholder="Chat SMP... (Enter gửi, lên/xuống gọi lại)" />
+              <button id="btnSendChatSmp" class="primary sendBtnBig">Gửi SMP</button>
+            </div>
+          </section>
 
-        <div class="chatWrap">
+          <section class="consolePanel" aria-label="Console Skyblock">
+            <div class="consolePanelHeader">
+              <div class="consolePanelTitle">
+                <span class="pill sky">Skyblock</span>
+                <span>Console Skyblock</span>
+              </div>
+            </div>
+            <div id="logBoxSky" class="logBox"></div>
+            <div class="chatWrap">
+              <input id="chatInputSky" class="chatInputBig"
+                     placeholder="Chat Skyblock... (Enter gửi, lên/xuống gọi lại)" />
+              <button id="btnSendChatSky" class="primary sendBtnBig">Gửi Sky</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="chatWrap" style="display:none">
           <input id="chatInput" class="chatInputBig"
                  placeholder="Nhập chat... (Enter gửi bot đang tick, ↑↓ gọi lại)" />
           <button id="btnSendChat" class="primary sendBtnBig">Nhập</button>

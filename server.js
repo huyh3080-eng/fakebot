@@ -6,6 +6,10 @@ const path = require("path");
 const crypto = require("crypto");
 const yaml = require("js-yaml");
 const mineflayer = require("mineflayer");
+let mineflayerPathfinder = null;
+try {
+  mineflayerPathfinder = require("mineflayer-pathfinder");
+} catch {}
 
 const app = express();
 const server = http.createServer(app);
@@ -194,6 +198,7 @@ let CFG = {
   cmdDelay: 1,
   autoCmdDelay: 1,
   firstCmdDelay: 1.5,
+  reconnectDelay: 5000,
   servers: {
     smp: { accounts: [], selectedBots: [], autoCmds: [] },
     sky: { accounts: [], selectedBots: [], autoCmds: [] },
@@ -227,11 +232,30 @@ const BRAND_CHANNEL_RE = /^(?:MC\|Brand|minecraft:brand)$/i;
 const ALLOW_PLUGIN_CHANNELS = String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
 const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL ?? "1").trim() !== "0";
 const LOG_PLUGIN_CHANNELS = String(process.env.MC_LOG_PLUGIN_CHANNELS || "").trim() === "1";
+const WHISPER_REPLY = String(process.env.MC_WHISPER_REPLY || "").trim();
+const NATURAL_BEHAVIOR_DEFAULTS = Object.freeze({
+  enabled: true,
+  pathfinder: true,
+  brandOnLogin: true,
+  reconnectDelay: 5000,
+  headTurnMinMs: 800,
+  headTurnMaxMs: 1200,
+  lookMinMs: 1000,
+  lookMaxMs: 2000,
+  jumpMinMs: 30000,
+  jumpMaxMs: 60000,
+  sneakMinMs: 45000,
+  sneakMaxMs: 90000,
+  armSwingMinMs: 80,
+  armSwingMaxMs: 220,
+});
 const STEALTH_DISABLED_INTERNAL_PLUGINS = Object.freeze({
   book: false,
   anvil: false,
   villager: false,
   command_block: false,
+  pathfinder: false,
+  pvp: false,
 });
 const EXTRA_ALLOWED_CHANNELS = new Set(
   String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
@@ -267,12 +291,20 @@ function emitBotStatus() {
   broadcast("bot-status", { online, total });
 }
 
-function sendLogs(user, msg, player = "") {
-  const server = botServerMap?.[user] || "";
+function normalizeLogText(msg) {
+  return String(msg ?? "")
+    .replaceAll("Ã‚Â§", "§")
+    .replaceAll("Â§", "§")
+    .replaceAll("Ã‚Â»", "»")
+    .replaceAll("Â»", "»");
+}
+
+function sendLogs(user, msg, player = "", serverOverride = "") {
+  const server = serverOverride || botServerMap?.[user] || "";
   const entry = {
     id: ++logSeq,
     user,
-    msg,
+    msg: normalizeLogText(msg),
     server,
     player,
     ts: Date.now(),
@@ -300,6 +332,8 @@ function shouldBlockCustomPayloadChannel(channel) {
 function installPayloadGuard(bot, botName) {
   const client = bot?._client;
   if (!client) return;
+  if (client.__oceandeepPayloadGuardInstalled) return;
+  client.__oceandeepPayloadGuardInstalled = true;
 
   const blockedLogDedup = new Set();
   const allowedLogDedup = new Set();
@@ -345,6 +379,19 @@ function installPayloadGuard(bot, botName) {
     };
   }
 
+  if (typeof client.unregisterChannel === "function") {
+    const originalUnregisterChannel = client.unregisterChannel.bind(client);
+    client.unregisterChannel = (channel, custom) => {
+      const channelName = normalizePayloadChannel(channel);
+      if (shouldBlockCustomPayloadChannel(channelName)) {
+        logBlocked("unregisterChannel", channelName);
+        return;
+      }
+      logAllowed("unregisterChannel", channelName);
+      return originalUnregisterChannel(channelName, custom);
+    };
+  }
+
   if (typeof client.write === "function") {
     const originalWrite = client.write.bind(client);
     client.write = (packetName, payload) => {
@@ -359,6 +406,28 @@ function installPayloadGuard(bot, botName) {
       return originalWrite(packetName, payload);
     };
   }
+
+  if (typeof client.emit === "function") {
+    const originalEmit = client.emit.bind(client);
+    client.emit = (event, ...args) => {
+      if (String(event || "").trim() === "custom_payload") {
+        const channelName = normalizePayloadChannel(args?.[0]?.channel);
+        if (shouldBlockCustomPayloadChannel(channelName)) {
+          logBlocked("recv custom_payload", channelName);
+          return false;
+        }
+        logAllowed("recv custom_payload", channelName);
+      }
+      return originalEmit(event, ...args);
+    };
+  }
+}
+
+function armPayloadGuard(bot, botName) {
+  if (typeof bot?.prependOnceListener === "function") {
+    bot.prependOnceListener("inject_allowed", () => installPayloadGuard(bot, botName));
+  }
+  installPayloadGuard(bot, botName);
 }
 
 function syncLegacyAliasesFromServers() {
@@ -435,6 +504,7 @@ function applyIncomingConfig(newCfg) {
   CFG.loginDelay = newCfg.loginDelay !== undefined ? newCfg.loginDelay : CFG.loginDelay;
   CFG.autoCmdDelay = newCfg.autoCmdDelay !== undefined ? newCfg.autoCmdDelay : CFG.autoCmdDelay;
   CFG.firstCmdDelay = newCfg.firstCmdDelay !== undefined ? newCfg.firstCmdDelay : CFG.firstCmdDelay;
+  CFG.reconnectDelay = newCfg.reconnectDelay !== undefined ? newCfg.reconnectDelay : CFG.reconnectDelay;
   CFG.minOn = newCfg.minOn !== undefined ? newCfg.minOn : CFG.minOn;
   CFG.maxOn = newCfg.maxOn !== undefined ? newCfg.maxOn : CFG.maxOn;
   CFG.minOff = newCfg.minOff !== undefined ? newCfg.minOff : CFG.minOff;
@@ -488,6 +558,7 @@ function loadCfg() {
       CFG.loginDelay = raw.loginDelay !== undefined ? raw.loginDelay : CFG.loginDelay;
       CFG.autoCmdDelay = raw.autoCmdDelay !== undefined ? raw.autoCmdDelay : CFG.autoCmdDelay;
       CFG.firstCmdDelay = raw.firstCmdDelay !== undefined ? raw.firstCmdDelay : CFG.firstCmdDelay;
+      CFG.reconnectDelay = raw.reconnectDelay !== undefined ? raw.reconnectDelay : CFG.reconnectDelay;
       CFG.minOn = raw.minOn !== undefined ? raw.minOn : CFG.minOn;
       CFG.maxOn = raw.maxOn !== undefined ? raw.maxOn : CFG.maxOn;
       CFG.minOff = raw.minOff !== undefined ? raw.minOff : CFG.minOff;
@@ -516,6 +587,7 @@ function saveCfg() {
       loginDelay: CFG.loginDelay,
       autoCmdDelay: CFG.autoCmdDelay,
       firstCmdDelay: CFG.firstCmdDelay,
+      reconnectDelay: CFG.reconnectDelay,
       minOn: CFG.minOn,
       maxOn: CFG.maxOn,
       minOff: CFG.minOff,
@@ -546,7 +618,181 @@ function saveCfg() {
 }
 
 function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
+  const a = parseInt(min, 10);
+  const b = parseInt(max, 10);
+  const lo = Number.isFinite(a) ? a : 0;
+  const hi = Number.isFinite(b) ? b : lo;
+  const mn = Math.min(lo, hi);
+  const mx = Math.max(lo, hi);
+  return Math.floor(Math.random() * (mx - mn + 1) + mn);
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+function getNaturalBehaviorCfg(cfg = {}) {
+  const raw = cfg.naturalBehavior && typeof cfg.naturalBehavior === "object" ? cfg.naturalBehavior : {};
+  const out = { ...NATURAL_BEHAVIOR_DEFAULTS, ...raw };
+  Object.keys(NATURAL_BEHAVIOR_DEFAULTS).forEach((key) => {
+    if (typeof NATURAL_BEHAVIOR_DEFAULTS[key] === "number") {
+      const n = Number(out[key]);
+      out[key] = Number.isFinite(n) ? n : NATURAL_BEHAVIOR_DEFAULTS[key];
+    }
+  });
+  out.enabled = raw.enabled !== undefined ? !!raw.enabled : NATURAL_BEHAVIOR_DEFAULTS.enabled;
+  out.pathfinder = raw.pathfinder !== undefined ? !!raw.pathfinder : NATURAL_BEHAVIOR_DEFAULTS.pathfinder;
+  out.brandOnLogin = raw.brandOnLogin !== undefined ? !!raw.brandOnLogin : NATURAL_BEHAVIOR_DEFAULTS.brandOnLogin;
+  out.reconnectDelay = Number(cfg.reconnectDelay ?? raw.reconnectDelay ?? out.reconnectDelay);
+  if (!Number.isFinite(out.reconnectDelay) || out.reconnectDelay < 0) out.reconnectDelay = NATURAL_BEHAVIOR_DEFAULTS.reconnectDelay;
+  return out;
+}
+
+function writeVarIntBuffer(value) {
+  const bytes = [];
+  let v = Number(value) >>> 0;
+  do {
+    let temp = v & 0x7f;
+    v >>>= 7;
+    if (v !== 0) temp |= 0x80;
+    bytes.push(temp);
+  } while (v !== 0);
+  return Buffer.from(bytes);
+}
+
+function encodeBrandPayload(brand) {
+  const brandBytes = Buffer.from(String(brand || "vanilla"), "utf8");
+  return Buffer.concat([writeVarIntBuffer(brandBytes.length), brandBytes]);
+}
+
+function pushPanelTimer(bot, timer) {
+  if (!bot?._panelMeta) return;
+  if (!Array.isArray(bot._panelMeta.naturalTimers)) bot._panelMeta.naturalTimers = [];
+  bot._panelMeta.naturalTimers.push(timer);
+}
+
+function setPanelTimer(bot, fn, delayMs) {
+  const timer = setTimeout(async () => {
+    try {
+      await fn();
+    } finally {
+      if (Array.isArray(bot?._panelMeta?.naturalTimers)) {
+        bot._panelMeta.naturalTimers = bot._panelMeta.naturalTimers.filter((t) => t !== timer);
+      }
+    }
+  }, Math.max(0, Number(delayMs) || 0));
+  pushPanelTimer(bot, timer);
+  return timer;
+}
+
+function loadPathfinderPlugin(bot, botName, cfg) {
+  try {
+    const natural = getNaturalBehaviorCfg(cfg);
+    const plugin = mineflayerPathfinder?.pathfinder;
+    if (!natural.pathfinder || typeof plugin !== "function" || typeof bot?.loadPlugin !== "function") return;
+    bot.loadPlugin(plugin);
+    sendLogs(botName, "§8[Move] pathfinder loaded");
+  } catch (e) {
+    sendLogs(botName, `§8[Move] pathfinder skip: ${e?.message || String(e)}`);
+  }
+}
+
+function installVanillaBrandOnLogin(bot, botName, cfg) {
+  try {
+    const natural = getNaturalBehaviorCfg(cfg);
+    if (!natural.brandOnLogin) return;
+    const client = bot?._client;
+    if (!client || typeof client.on !== "function") return;
+    client.on("login", async () => {
+      try {
+        await sleepMs(randInt(40, 160));
+        client.write("custom_payload", {
+          channel: "minecraft:brand",
+          data: encodeBrandPayload(DEFAULT_CLIENT_BRAND || "vanilla"),
+        });
+        sendLogs(botName, `§8[Brand] ${DEFAULT_CLIENT_BRAND || "vanilla"}`);
+      } catch (e) {
+        sendLogs(botName, `§8[Brand] skip: ${e?.message || String(e)}`);
+      }
+    });
+  } catch {}
+}
+
+async function safeSwingArm(bot) {
+  try {
+    const natural = getNaturalBehaviorCfg();
+    await sleepMs(randInt(natural.armSwingMinMs, natural.armSwingMaxMs));
+    if (typeof bot?.swingArm === "function") bot.swingArm("right", true);
+  } catch {}
+}
+
+function scheduleNaturalLoop(bot, botName, cfg, minKey, maxKey, action) {
+  const natural = getNaturalBehaviorCfg(cfg);
+  const run = async () => {
+    try {
+      if (bot?._panelMeta?.naturalStopped) return;
+      await action(natural);
+    } catch (e) {
+      sendLogs(botName, `§8[AFK] ${e?.message || String(e)}`);
+    } finally {
+      if (!bot?._panelMeta?.naturalStopped) {
+        setPanelTimer(bot, run, randInt(natural[minKey], natural[maxKey]));
+      }
+    }
+  };
+  setPanelTimer(bot, run, randInt(natural[minKey], natural[maxKey]));
+}
+
+function startNaturalBehavior(bot, botName, cfg) {
+  try {
+    const natural = getNaturalBehaviorCfg(cfg);
+    if (!natural.enabled || !bot?._panelMeta) return;
+    bot._panelMeta.naturalStopped = false;
+
+    scheduleNaturalLoop(bot, botName, cfg, "headTurnMinMs", "headTurnMaxMs", async () => {
+      const yaw = Number(bot?.entity?.yaw || 0) + (Math.random() * 0.04 - 0.02);
+      const pitch = Number(bot?.entity?.pitch || 0);
+      if (typeof bot?.look === "function") await bot.look(yaw, pitch, true);
+    });
+
+    scheduleNaturalLoop(bot, botName, cfg, "lookMinMs", "lookMaxMs", async () => {
+      const yaw = Number(bot?.entity?.yaw || 0) + (Math.random() * 0.08 - 0.04);
+      const pitch = Number(bot?.entity?.pitch || 0) + (Math.random() * 0.02 - 0.01);
+      if (typeof bot?.look === "function") await bot.look(yaw, pitch, true);
+    });
+
+    scheduleNaturalLoop(bot, botName, cfg, "jumpMinMs", "jumpMaxMs", async () => {
+      if (typeof bot?.setControlState !== "function") return;
+      bot.setControlState("jump", true);
+      await sleepMs(randInt(120, 260));
+      bot.setControlState("jump", false);
+    });
+
+    scheduleNaturalLoop(bot, botName, cfg, "sneakMinMs", "sneakMaxMs", async () => {
+      if (typeof bot?.setControlState !== "function") return;
+      bot.setControlState("sneak", true);
+      await sleepMs(randInt(800, 2400));
+      bot.setControlState("sneak", false);
+    });
+  } catch (e) {
+    sendLogs(botName, `§8[AFK] disabled: ${e?.message || String(e)}`);
+  }
+}
+
+function maybeReplyToWhisper(bot, botName, message) {
+  try {
+    if (!WHISPER_REPLY || !bot || !message) return;
+    const text = stripFormattingCodes(message).toLowerCase();
+    if (!/(whisper|whispers|msg|tell|->|»)/i.test(text)) return;
+    setPanelTimer(bot, async () => {
+      try {
+        if (bot?._panelMeta?.naturalStopped) return;
+        safeSwingArm(bot);
+        bot.chat(WHISPER_REPLY.slice(0, 255));
+        sendLogs(botName, `§8[WhisperReply] §7${WHISPER_REPLY.slice(0, 80)}`);
+      } catch {}
+    }, randInt(1200, 3500));
+  } catch {}
 }
 
 function hashNameMod(name, mod) {
@@ -589,6 +835,34 @@ function normalizeMcVersion(v) {
 
 function isMcUsername(name) {
   return /^[A-Za-z0-9_]{1,16}$/.test(String(name || "").trim());
+}
+
+function resolvePlayerNameFromSender(bot, sender) {
+  const raw = String(sender || "").trim();
+  if (!raw) return "";
+  if (isMcUsername(raw)) return raw;
+
+  const direct = bot?.uuidToUsername?.[raw];
+  if (isMcUsername(direct)) return direct;
+
+  const normalized = raw.toLowerCase();
+  for (const [uuid, username] of Object.entries(bot?.uuidToUsername || {})) {
+    if (String(uuid || "").toLowerCase() === normalized && isMcUsername(username)) return username;
+  }
+
+  const players = Object.values(bot?.players || {});
+  for (const player of players) {
+    if (String(player?.uuid || "").toLowerCase() === normalized && isMcUsername(player?.username)) {
+      return player.username;
+    }
+  }
+
+  try {
+    const player = typeof bot?._playerFromUUID === "function" ? bot._playerFromUUID(raw) : null;
+    if (isMcUsername(player?.username)) return player.username;
+  } catch {}
+
+  return "";
 }
 
 function stripFormattingCodes(text) {
@@ -674,9 +948,9 @@ function extractPlayerFromJsonChat(chatNode) {
   return "";
 }
 
-function extractPlayerNameFromMessage(message, jsonMsg, sender) {
-  const senderName = String(sender || "").trim();
-  if (isMcUsername(senderName)) return senderName;
+function extractPlayerNameFromMessage(bot, message, jsonMsg, sender) {
+  const senderName = resolvePlayerNameFromSender(bot, sender);
+  if (senderName) return senderName;
 
   const fromJson = extractPlayerFromJsonChat(jsonMsg);
   if (fromJson) return fromJson;
@@ -881,15 +1155,10 @@ function finishServerLoginAttempt(serverKey, { cfg, success = false, fastKick = 
 }
 
 function calcReconnectDelayMs(name, cfg, lastKickReasonText) {
-  const minOff = Math.max(0, Number(cfg.minOff) || 0);
-  const maxOff = Math.max(minOff, Number(cfg.maxOff) || minOff);
-  const botPhaseSec = hashNameMod(name, 9);
-  const baseMs = (randInt(minOff, maxOff) + randInt(0, 8) + botPhaseSec) * 1000;
-
   if (isLoginFastKickReason(lastKickReasonText)) {
     return randInt(1500, 3500);
   }
-  return baseMs;
+  return getNaturalBehaviorCfg(cfg).reconnectDelay + randInt(250, 1250);
 }
 
 function stopAutoCmdTimers(bot) {
@@ -898,7 +1167,16 @@ function stopAutoCmdTimers(bot) {
       bot._panelMeta.autoCmdTimers.forEach((t) => clearTimeout(t));
       bot._panelMeta.autoCmdTimers = [];
     }
+    if (bot?._panelMeta?.naturalTimers) {
+      bot._panelMeta.naturalTimers.forEach((t) => clearTimeout(t));
+      bot._panelMeta.naturalTimers = [];
+    }
+    if (typeof bot?.setControlState === "function") {
+      try { bot.setControlState("jump", false); } catch {}
+      try { bot.setControlState("sneak", false); } catch {}
+    }
     if (bot?._panelMeta) bot._panelMeta.autoCmdRunning = false;
+    if (bot?._panelMeta) bot._panelMeta.naturalStopped = true;
   } catch {}
 }
 
@@ -935,7 +1213,7 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
 
   const t0 = setTimeout(() => {
     let i = 0;
-    const runNext = () => {
+    const runNext = async () => {
       if (!activeBots[name]) return;
       if (!desiredBots.has(name)) return;
       if (!autoCmdRuntimeEnabled) return;
@@ -943,6 +1221,7 @@ function runAutoCmdOncePerSpawn(bot, name, cfg) {
 
       const cmd = cmds[i++];
       try {
+        await safeSwingArm(bot);
         bot.chat(cmd);
         sendLogs(name, `§8[AutoCmd] §7${cmd}`);
       } catch {}
@@ -990,6 +1269,8 @@ function spawnBot(name, serverKey) {
     auth: "offline",
     brand: DEFAULT_CLIENT_BRAND,
     plugins: { ...STEALTH_DISABLED_INTERNAL_PLUGINS },
+    hideErrors: false,
+    checkTimeoutInterval: 30000,
   };
   if (mcVersion) botOpts.version = mcVersion;
 
@@ -999,8 +1280,10 @@ function spawnBot(name, serverKey) {
   botServerMap[name] = targetServerKey;
 
   const bot = mineflayer.createBot(botOpts);
-  installPayloadGuard(bot, name);
-  bot._panelMeta = { autoCmdTimers: [], autoCmdRunning: false };
+  loadPathfinderPlugin(bot, name, CFG);
+  installVanillaBrandOnLogin(bot, name, CFG);
+  armPayloadGuard(bot, name);
+  bot._panelMeta = { autoCmdTimers: [], naturalTimers: [], autoCmdRunning: false, naturalStopped: false };
 
   let quitTimer = null;
   let lastKickReasonText = "";
@@ -1011,6 +1294,7 @@ function spawnBot(name, serverKey) {
     activeBots[name] = bot;
     emitBotStatus();
     sendLogs(name, `§a✔ Đã vào server! §8(Ver: ${mcVersion || "AUTO"})`);
+    startNaturalBehavior(bot, name, CFG);
     runAutoCmdOncePerSpawn(bot, name, CFG);
 
     const timeOnSec = randInt(CFG.minOn, CFG.maxOn);
@@ -1030,8 +1314,9 @@ function spawnBot(name, serverKey) {
     try {
       if (position && String(position) !== "chat") return;
       const msgStr = String(message ?? "");
-      const player = extractPlayerNameFromMessage(msgStr, jsonMsg, packetSender);
+      const player = extractPlayerNameFromMessage(bot, msgStr, jsonMsg, packetSender);
       sendLogs(name, msgStr, player);
+      maybeReplyToWhisper(bot, name, msgStr);
     } catch {}
   });
 
@@ -1059,12 +1344,12 @@ function spawnBot(name, serverKey) {
     if (quitTimer) clearTimeout(quitTimer);
     const savedServerKey = botServerMap[name];
     delete activeBots[name];
-    delete botServerMap[name];
     emitBotStatus();
 
     if (isQuitting) return;
 
     if (desiredBots.has(name)) {
+      if (savedServerKey) botServerMap[name] = savedServerKey;
       const timeOffMs = calcReconnectDelayMs(name, CFG, lastKickReasonText);
       const enforcedCooldownMs = Math.max(0, Number(loginMeta?.cooldownMs || 0));
       const nextWaitMs = Math.max(timeOffMs, enforcedCooldownMs);
@@ -1075,6 +1360,7 @@ function spawnBot(name, serverKey) {
 
       scheduleBotSpawn(name, savedServerKey || "smp", nextWaitMs);
     } else {
+      setTimeout(() => delete botServerMap[name], 0);
       sendLogs(name, "§7Đã dừng (không còn được tick).");
     }
   });
@@ -1207,6 +1493,7 @@ app.post("/api/run-all", (req, res) => {
     CFG.maxOff = cfg.maxOff !== undefined ? cfg.maxOff : CFG.maxOff;
     CFG.autoCmdDelay = cfg.autoCmdDelay !== undefined ? cfg.autoCmdDelay : CFG.autoCmdDelay;
     CFG.firstCmdDelay = cfg.firstCmdDelay !== undefined ? cfg.firstCmdDelay : CFG.firstCmdDelay;
+    CFG.reconnectDelay = cfg.reconnectDelay !== undefined ? cfg.reconnectDelay : CFG.reconnectDelay;
   }
   
   runAllBots(botCmdMap);
@@ -1247,6 +1534,7 @@ app.post("/api/run-server", (req, res) => {
     CFG.maxOff = cfg.maxOff !== undefined ? cfg.maxOff : CFG.maxOff;
     CFG.autoCmdDelay = cfg.autoCmdDelay !== undefined ? cfg.autoCmdDelay : CFG.autoCmdDelay;
     CFG.firstCmdDelay = cfg.firstCmdDelay !== undefined ? cfg.firstCmdDelay : CFG.firstCmdDelay;
+    CFG.reconnectDelay = cfg.reconnectDelay !== undefined ? cfg.reconnectDelay : CFG.reconnectDelay;
   }
   
   runtimeBotCmdMap = botCmdMap || {};
@@ -1272,6 +1560,7 @@ app.post("/api/stop-all", (req, res) => {
   desiredBots.clear();
   for (const name of [...pendingSpawnTimersByBot.keys()]) {
     clearPendingSpawn(name);
+    if (!activeBots[name]) delete botServerMap[name];
   }
   serverReconnectStateByKey.clear();
   Object.values(activeBots).forEach((bot) => {
@@ -1285,20 +1574,41 @@ app.post("/api/stop-all", (req, res) => {
 });
 
 app.post("/api/stop-selected", (req, res) => {
-  const { names } = req.body || {};
-  if (Array.isArray(names)) {
-    names.forEach(name => {
+  const { names, serverKey } = req.body || {};
+  const targets = new Set();
+  const targetServer = String(serverKey || "").toLowerCase();
+
+  if (targetServer === "smp" || targetServer === "sky") {
+    Object.entries(botServerMap).forEach(([name, mappedServer]) => {
+      if (mappedServer === targetServer) targets.add(name);
+    });
+    Object.keys(activeBots).forEach((name) => {
+      if (botServerMap[name] === targetServer) targets.add(name);
+    });
+  } else if (Array.isArray(names)) {
+    names.forEach((name) => targets.add(name));
+  }
+
+  if (targets.size > 0) {
+    targets.forEach(name => {
       desiredBots.delete(name);
       clearPendingSpawn(name);
       const b = activeBots[name];
       if (b) {
         stopAutoCmdTimers(b);
         try { b.quit(); } catch {}
+      } else {
+        delete botServerMap[name];
       }
     });
     emitBotStatus();
   }
-  sendLogs("SYSTEM", "§cĐã dừng bot đã chọn");
+  sendLogs(
+    "SYSTEM",
+    `§cĐã dừng ${targetServer === "sky" ? "Skyblock" : targetServer === "smp" ? "SMP" : "bot đã chọn"}`,
+    "",
+    targetServer
+  );
   res.json({ success: true });
 });
 
@@ -1310,6 +1620,7 @@ app.post("/api/bot/chat", (req, res) => {
   list.forEach((n) => {
     const b = activeBots[n];
     if (b) {
+      safeSwingArm(b);
       try { b.chat(text); sendLogs(n, `§8[Send] §7${text}`); } catch (e) { sendLogs("SYSTEM", `§c[SendError] ${n}: ${e?.message || e}`); }
     } else {
       sendLogs("SYSTEM", `§8[Send] §7${n} đang OFFLINE.`);

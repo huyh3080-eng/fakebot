@@ -3,48 +3,45 @@ port: 25565
 mcVersion: 1.19.4
 autoCmdEnabled: true
 preConnectDelay: 6
+firstJoinRandomMinDelay: 1000
+firstJoinRandomMaxDelay: 5000
 loginDelay: 8
-autoCmdDelay: 4
-firstCmdDelay: 4
+autoCmdDelay: 8
+firstCmdDelay: 8
+reconnectDelay: 5000
 minOn: 5000
 maxOn: 20000
 minOff: 3000
 maxOff: 8000
 autoStartOnBoot: true
+accounts:
+  - Vortex2613
+selectedBots:
+  - Vortex2613
+autoCmds:
+  - /dn 1234567890@
+  - /server smp
 servers:
   smp:
     accounts:
-      - hanachan
-      - kawaiiiiiii
-      - katchan
-      - shinichi
-      - taigaaaaaaa
-      - maiden
-      - huyenphong
-      - quanghuy
-      - khanhlinh
-      - ducminh
-      - nhatminh
-      - Itsuki
-      - Lucas
-      - Akira
-      - Ryan
+      - Vortex2613
     selectedBots:
-      - hanachan
-      - kawaiiiiiii
+      - Vortex2613
     autoCmds:
-      - /dn 123456
+      - /dn 1234567890@
       - /server smp
-      - /home nha
   sky:
     accounts:
-      - thuongnee
-      - TuTuDi_VN
-      - quanganco
-      - Summon
-      - DoanDiBom
-    selectedBots: []
+      - RaginRC
+      - SitLiTiz
+      - MiddleOfTheSea
+      - KPhuong102
+      - doanvotinh
+    selectedBots:
+      - SitLiTiz
+      - MiddleOfTheSea
+      - KPhuong102
+      - doanvotinh
     autoCmds:
-      - /dn 12345678
-      - /server skyblock
-      - /is
+      - /dn 123456
+      - /server vanila

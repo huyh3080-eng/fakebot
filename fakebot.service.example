@@ -21,6 +21,9 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=CANONICAL_BASE_URL=https://cp.oceandeepsmc.top
+Environment=MC_CLIENT_BRAND=vanilla
+Environment=MC_ALLOW_PLUGIN_CHANNELS=0
+Environment=MC_ALLOW_BRAND_CHANNEL=1
 # Tài khoản/mật khẩu panel (đặt trên server, không ghi vào repo): hash = sha256(LOGIN_SALT + mật_khẩu)
 # Environment=LOGIN_USER=admin
 # Environment=LOGIN_PASS_HASH=<hex hash>

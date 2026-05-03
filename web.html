@@ -267,8 +267,48 @@
       min-height:0;
     }
 
+    .consoleGrid{
+      flex:0 0 auto;
+      min-height:0;
+      display:grid;
+      grid-template-rows:repeat(2, auto);
+      gap:8px;
+    }
+
+    .consolePanel{
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    .consolePanelHeader{
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .consolePanelTitle{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-size:13px;
+      font-weight:700;
+      color:#e5e7eb;
+    }
+
+    .consoleActions{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+
     .logBox{
-      flex:1;
+      flex:0 0 auto;
+      height:clamp(480px, 52vh, 660px);
+      min-height:480px;
       overflow-y:auto;
       overflow-x:hidden;
       background: rgba(2, 6, 18, .85);
@@ -278,7 +318,6 @@
       font-family: Consolas, "Courier New", monospace;
       font-size: 13px;
       line-height: 1.35;
-      max-height: 500px;
     }
 
     .logLine{ 
@@ -300,6 +339,18 @@
       min-width: 140px;
       height: 54px;
       font-size: 15px;
+    }
+
+    .consolePanel .chatWrap{ gap:8px; }
+    .consolePanel .chatInputBig{
+      height:40px;
+      font-size:13px;
+      padding:9px 10px;
+    }
+    .consolePanel .sendBtnBig{
+      min-width:82px;
+      height:40px;
+      font-size:13px;
     }
 
     .helpBox{
@@ -646,10 +697,34 @@
           </div>
         </div>
         <input type="file" id="inputImportConfig" accept=".yml,.yaml" style="display:none" />
-        <div id="logBox" class="logBox"></div>
-        <div class="chatWrap">
-          <input id="chatInput" class="chatInputBig" placeholder="Nhập chat... (Enter gửi, lên/xuống gọi lại)" />
-          <button id="sendChatBtn" class="sendBtnBig primary">Gửi</button>
+        <div class="consoleGrid">
+          <section class="consolePanel" aria-label="Console SMP">
+            <div class="consolePanelHeader">
+              <div class="consolePanelTitle">
+                <span class="pill smp">SMP</span>
+                <span>Console SMP</span>
+              </div>
+            </div>
+            <div id="logBoxSmp" class="logBox"></div>
+            <div class="chatWrap">
+              <input id="chatInputSmp" class="chatInputBig" placeholder="Chat SMP... (Enter gửi, lên/xuống gọi lại)" />
+              <button id="btnSendChatSmp" class="sendBtnBig primary">Gửi SMP</button>
+            </div>
+          </section>
+
+          <section class="consolePanel" aria-label="Console Skyblock">
+            <div class="consolePanelHeader">
+              <div class="consolePanelTitle">
+                <span class="pill sky">Skyblock</span>
+                <span>Console Skyblock</span>
+              </div>
+            </div>
+            <div id="logBoxSky" class="logBox"></div>
+            <div class="chatWrap">
+              <input id="chatInputSky" class="chatInputBig" placeholder="Chat Skyblock... (Enter gửi, lên/xuống gọi lại)" />
+              <button id="btnSendChatSky" class="sendBtnBig primary">Gửi Sky</button>
+            </div>
+          </section>
         </div>
         <div class="mini">
           Console có thanh cuộn. Kéo lên để xem log cũ.
@@ -682,6 +757,7 @@
       loginDelay: 1,
       autoCmdDelay: 1,
       firstCmdDelay: 1.5,
+      reconnectDelay: 5000,
       minOn: 30,
       maxOn: 60,
       minOff: 10,
@@ -701,9 +777,10 @@
     let logPollTimer = null;
     let lastLogId = 0;
     let redirectingToLogin = false;
-    let chatHistory = [];
-    let historyIndex = -1;
-    let isPinnedToBottom = true;
+    const chatHistory = { smp: [], sky: [] };
+    const historyIndex = { smp: -1, sky: -1 };
+    const CONSOLE_KEYS = ["smp", "sky"];
+    const consolePinned = { smp: true, sky: true };
 
     // Ansi to HTML - supports both Minecraft § codes and ANSI escape codes
     const ansiColors = {
@@ -782,6 +859,51 @@
       const mm = String(d.getMinutes()).padStart(2, "0");
       const ss = String(d.getSeconds()).padStart(2, "0");
       return `${hh}:${mm}:${ss}`;
+    }
+
+    function getConsoleBox(serverKey) {
+      return document.getElementById(serverKey === "sky" ? "logBoxSky" : "logBoxSmp");
+    }
+
+    function getConsoleBoxesForLog(serverKey) {
+      const key = String(serverKey || "").toLowerCase();
+      if (key === "smp" || key === "sky") return [getConsoleBox(key)].filter(Boolean);
+      return CONSOLE_KEYS.map(getConsoleBox).filter(Boolean);
+    }
+
+    function clearConsole(serverKey) {
+      getConsoleBoxesForLog(serverKey).forEach((box) => {
+        box.innerHTML = "";
+      });
+    }
+
+    function exportConsole(serverKey) {
+      const lines = getConsoleBoxesForLog(serverKey)
+        .flatMap((box) => Array.from(box.querySelectorAll(".logLine")))
+        .map((el) => el.innerText || el.textContent)
+        .filter(Boolean);
+      if (!lines.length) return;
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const suffix = serverKey === "smp" || serverKey === "sky" ? "-" + serverKey : "";
+      a.href = url;
+      a.download = "console" + suffix + "-" + new Date().toISOString().slice(0, 19).replace(/:/g, "-") + ".txt";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function bindConsoleScrollState() {
+      CONSOLE_KEYS.forEach((serverKey) => {
+        const box = getConsoleBox(serverKey);
+        if (!box || box.dataset.scrollBound === "1") return;
+        box.dataset.scrollBound = "1";
+        box.addEventListener("scroll", () => {
+          const threshold = 40;
+          const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
+          consolePinned[serverKey] = dist <= threshold;
+        });
+      });
     }
 
     function isMcUsername(name) {
@@ -1077,11 +1199,10 @@
 
     async function stopServer(serverKey) {
       try {
-        const names = serverKey === "smp" ? Array.from(UI_SMP) : Array.from(UI_SKY);
         await fetch((window.BASE_PATH || '') + '/api/stop-selected', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ names })
+          body: JSON.stringify({ serverKey })
         });
         showNotification(`Đã dừng ${serverKey.toUpperCase()}!`);
       } catch (e) {
@@ -1101,24 +1222,69 @@
       }
     }
 
-    async function sendChat(message) {
+    function getChatInput(serverKey) {
+      return document.getElementById(serverKey === "sky" ? "chatInputSky" : "chatInputSmp");
+    }
+
+    function getSelectedChatNames(serverKey) {
+      return serverKey === "sky" ? Array.from(UI_SKY) : Array.from(UI_SMP);
+    }
+
+    async function sendChat(serverKey, message) {
       if (!message.trim()) return;
       try {
-        const names = [...Array.from(UI_SMP), ...Array.from(UI_SKY)];
+        const names = getSelectedChatNames(serverKey);
         await fetch((window.BASE_PATH || '') + '/api/bot/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message, names })
         });
 
-        chatHistory.push(message);
-        if (chatHistory.length > 200) chatHistory.shift();
-        historyIndex = chatHistory.length;
+        chatHistory[serverKey].push(message);
+        if (chatHistory[serverKey].length > 200) chatHistory[serverKey].shift();
+        historyIndex[serverKey] = chatHistory[serverKey].length;
 
-        document.getElementById('chatInput').value = '';
+        const input = getChatInput(serverKey);
+        if (input) input.value = '';
       } catch (e) {
         console.error('Failed to send chat:', e);
       }
+    }
+
+    function bindChatInput(serverKey) {
+      const input = getChatInput(serverKey);
+      if (!input || input.dataset.chatBound === "1") return;
+      input.dataset.chatBound = "1";
+      input.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          sendChat(serverKey, input.value);
+          e.preventDefault();
+          return;
+        }
+
+        if (e.key === "ArrowUp") {
+          if (chatHistory[serverKey].length === 0) return;
+          historyIndex[serverKey]--;
+          if (historyIndex[serverKey] < 0) historyIndex[serverKey] = 0;
+          input.value = chatHistory[serverKey][historyIndex[serverKey]] || "";
+          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+          e.preventDefault();
+          return;
+        }
+
+        if (e.key === "ArrowDown") {
+          if (chatHistory[serverKey].length === 0) return;
+          historyIndex[serverKey]++;
+          if (historyIndex[serverKey] >= chatHistory[serverKey].length) {
+            historyIndex[serverKey] = chatHistory[serverKey].length;
+            input.value = "";
+          } else {
+            input.value = chatHistory[serverKey][historyIndex[serverKey]] || "";
+          }
+          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+          e.preventDefault();
+        }
+      };
     }
 
     function aiProviderLabel(type) {
@@ -1627,8 +1793,8 @@
     }
 
     function addLog(user, msg, player, server) {
-      const box = document.getElementById("logBox");
-      if (!box) return;
+      const boxes = getConsoleBoxesForLog(server);
+      if (!boxes.length) return;
 
       const botName = String(user || "unknown");
       const playerFromMain = String(player || "").trim();
@@ -1650,9 +1816,7 @@
         ? ` <span style="color:#facc15"><b>[${escapeHtml(playerName)}]</b></span>`
         : "";
 
-      const line = document.createElement("div");
-      line.className = "logLine";
-      line.innerHTML =
+      const html =
         `<span style="color:#64748b;font-size:11px;">[${time}]</span> ` +
         `${serverTag} ` +
         `${botTag}` +
@@ -1660,17 +1824,20 @@
         ` <span style="color:#64748b;">:</span> ` +
         `<span style="color:#e5e7eb;">${formatLogHtml(msg)}</span>`;
 
-      box.appendChild(line);
+      boxes.forEach((box) => {
+        const serverKey = box.id === "logBoxSky" ? "sky" : "smp";
+        const line = document.createElement("div");
+        line.className = "logLine";
+        line.innerHTML = html;
+        box.appendChild(line);
 
-      // Auto scroll if pinned
-      const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
-      isPinnedToBottom = dist <= 40;
-      if (isPinnedToBottom) box.scrollTop = box.scrollHeight;
+        if (consolePinned[serverKey]) box.scrollTop = box.scrollHeight;
 
-      // Keep only last 1200 lines
-      while (box.children.length > 1200) {
-        box.removeChild(box.firstChild);
-      }
+        // Keep only last 1200 lines
+        while (box.children.length > 1200) {
+          box.removeChild(box.firstChild);
+        }
+      });
     }
 
     function showNotification(msg, type) {
@@ -1712,9 +1879,7 @@
 
       document.getElementById("btnRunAll").onclick = runAll;
       document.getElementById("btnStopAll").onclick = stopAll;
-      document.getElementById("btnClearLog").onclick = () => {
-        document.getElementById("logBox").innerHTML = "";
-      };
+      document.getElementById("btnClearLog").onclick = () => clearConsole();
 
       document.getElementById("btnExportConfig").onclick = async () => {
         try {
@@ -1780,42 +1945,10 @@
       document.getElementById("btnAddCmdSky").onclick = () => addCmdTo("sky");
 
       // Chat with history
-      document.getElementById("sendChatBtn").onclick = () => {
-        sendChat(document.getElementById("chatInput").value);
-      };
-      document.getElementById("chatInput").onkeydown = (e) => {
-        const input = e.target;
-
-        if (e.key === "Enter") {
-          sendChat(input.value);
-          e.preventDefault();
-          return;
-        }
-
-        if (e.key === "ArrowUp") {
-          if (chatHistory.length === 0) return;
-          historyIndex--;
-          if (historyIndex < 0) historyIndex = 0;
-          input.value = chatHistory[historyIndex] || "";
-          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-          e.preventDefault();
-          return;
-        }
-
-        if (e.key === "ArrowDown") {
-          if (chatHistory.length === 0) return;
-          historyIndex++;
-          if (historyIndex >= chatHistory.length) {
-            historyIndex = chatHistory.length;
-            input.value = "";
-          } else {
-            input.value = chatHistory[historyIndex] || "";
-          }
-          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-          e.preventDefault();
-          return;
-        }
-      };
+      document.getElementById("btnSendChatSmp").onclick = () => sendChat("smp", getChatInput("smp").value);
+      document.getElementById("btnSendChatSky").onclick = () => sendChat("sky", getChatInput("sky").value);
+      bindChatInput("smp");
+      bindChatInput("sky");
 
       // Enter key for adding bots/commands
       document.getElementById("botNameSmp").onkeydown = (e) => { if (e.key === "Enter") addBotTo("smp"); };
@@ -1824,14 +1957,7 @@
       document.getElementById("cmdTextSky").onkeydown = (e) => { if (e.key === "Enter") addCmdTo("sky"); };
 
       // Auto scroll detection
-      const logBox = document.getElementById("logBox");
-      if (logBox) {
-        logBox.addEventListener("scroll", () => {
-          const threshold = 40;
-          const dist = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight;
-          isPinnedToBottom = dist <= threshold;
-        });
-      }
+      bindConsoleScrollState();
 
       // Save on blur
       const inputs = ["ip", "port", "mcVersion", "preConnectDelay", "firstJoinRandomMinDelay", "firstJoinRandomMaxDelay", "loginDelay", "autoCmdDelay", "firstCmdDelay", "minOn", "maxOn", "minOff", "maxOff"];
