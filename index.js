@@ -50,10 +50,14 @@ const STEALTH_DISABLED_INTERNAL_PLUGINS = Object.freeze({
   pvp: false,
 });
 const EXTRA_ALLOWED_CHANNELS = new Set(
-  String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
-    .split(",")
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean)
+  [
+    "minecraft:register",
+    "vv:proxy_details",
+    ...String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean)
+  ]
 );
 
 let runtimeBotCmdMap = {};
