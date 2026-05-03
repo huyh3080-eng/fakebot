@@ -31,7 +31,7 @@ const WHISPER_REPLY = String(process.env.MC_WHISPER_REPLY || "").trim();
 const NATURAL_BEHAVIOR_DEFAULTS = Object.freeze({
   enabled: true,
   pathfinder: !STRICT_VANILLA_MODE,
-  brandOnLogin: true,
+  brandOnLogin: false,
   reconnectDelay: 5000,
   headTurnMinMs: 3000,
   headTurnMaxMs: 8000,
@@ -325,7 +325,7 @@ function getNaturalBehaviorCfg(cfg = {}) {
   });
   out.enabled = raw.enabled !== undefined ? !!raw.enabled : NATURAL_BEHAVIOR_DEFAULTS.enabled;
   out.pathfinder = STRICT_VANILLA_MODE ? false : (raw.pathfinder !== undefined ? !!raw.pathfinder : NATURAL_BEHAVIOR_DEFAULTS.pathfinder);
-  out.brandOnLogin = STRICT_VANILLA_MODE ? true : (raw.brandOnLogin !== undefined ? !!raw.brandOnLogin : NATURAL_BEHAVIOR_DEFAULTS.brandOnLogin);
+  out.brandOnLogin = STRICT_VANILLA_MODE ? false : (raw.brandOnLogin !== undefined ? !!raw.brandOnLogin : NATURAL_BEHAVIOR_DEFAULTS.brandOnLogin);
   out.reconnectDelay = Number(cfg.reconnectDelay ?? raw.reconnectDelay ?? out.reconnectDelay);
   if (!Number.isFinite(out.reconnectDelay) || out.reconnectDelay < 0) out.reconnectDelay = NATURAL_BEHAVIOR_DEFAULTS.reconnectDelay;
   return out;
