@@ -18,22 +18,25 @@ let isQuitting = false;
 let desiredBots = new Set();
 let autoCmdRuntimeEnabled = true;
 const MIN_FIRST_AUTOCMD_DELAY_SEC = 3;
-const DEFAULT_CLIENT_BRAND = String(process.env.MC_CLIENT_BRAND || "vanilla").trim() || "vanilla";
+const STRICT_VANILLA_MODE = String(process.env.MC_STRICT_VANILLA ?? "1").trim() !== "0";
+const DEFAULT_CLIENT_BRAND = STRICT_VANILLA_MODE
+  ? "vanilla"
+  : String(process.env.MC_CLIENT_BRAND || "vanilla").trim() || "vanilla";
 const BLOCKED_MOD_CHANNEL_RE = /^(?:fml(?:[:|]|$)|forge(?:[:|]|$)|fabric(?:[:|]|$)|quilt(?:[:|]|$)|liteloader(?:[:|]|$))/i;
 const BRAND_CHANNEL_RE = /^(?:MC\|Brand|minecraft:brand)$/i;
-const ALLOW_PLUGIN_CHANNELS = String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
-const ALLOW_BRAND_CHANNEL = String(process.env.MC_ALLOW_BRAND_CHANNEL ?? "1").trim() !== "0";
+const ALLOW_PLUGIN_CHANNELS = !STRICT_VANILLA_MODE && String(process.env.MC_ALLOW_PLUGIN_CHANNELS || "").trim() === "1";
+const ALLOW_BRAND_CHANNEL = STRICT_VANILLA_MODE || String(process.env.MC_ALLOW_BRAND_CHANNEL ?? "1").trim() !== "0";
 const LOG_PLUGIN_CHANNELS = String(process.env.MC_LOG_PLUGIN_CHANNELS || "").trim() === "1";
 const WHISPER_REPLY = String(process.env.MC_WHISPER_REPLY || "").trim();
 const NATURAL_BEHAVIOR_DEFAULTS = Object.freeze({
   enabled: true,
-  pathfinder: true,
+  pathfinder: !STRICT_VANILLA_MODE,
   brandOnLogin: true,
   reconnectDelay: 5000,
-  headTurnMinMs: 800,
-  headTurnMaxMs: 1200,
-  lookMinMs: 1000,
-  lookMaxMs: 2000,
+  headTurnMinMs: 3000,
+  headTurnMaxMs: 8000,
+  lookMinMs: 5000,
+  lookMaxMs: 12000,
   jumpMinMs: 30000,
   jumpMaxMs: 60000,
   sneakMinMs: 45000,
@@ -50,14 +53,12 @@ const STEALTH_DISABLED_INTERNAL_PLUGINS = Object.freeze({
   pvp: false,
 });
 const EXTRA_ALLOWED_CHANNELS = new Set(
-  [
-    "minecraft:register",
-    "vv:proxy_details",
-    ...String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
+  STRICT_VANILLA_MODE
+    ? []
+    : String(process.env.MC_ALLOWED_PLUGIN_CHANNELS || "")
       .split(",")
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean)
-  ]
 );
 
 let runtimeBotCmdMap = {};
@@ -323,8 +324,8 @@ function getNaturalBehaviorCfg(cfg = {}) {
     }
   });
   out.enabled = raw.enabled !== undefined ? !!raw.enabled : NATURAL_BEHAVIOR_DEFAULTS.enabled;
-  out.pathfinder = raw.pathfinder !== undefined ? !!raw.pathfinder : NATURAL_BEHAVIOR_DEFAULTS.pathfinder;
-  out.brandOnLogin = raw.brandOnLogin !== undefined ? !!raw.brandOnLogin : NATURAL_BEHAVIOR_DEFAULTS.brandOnLogin;
+  out.pathfinder = STRICT_VANILLA_MODE ? false : (raw.pathfinder !== undefined ? !!raw.pathfinder : NATURAL_BEHAVIOR_DEFAULTS.pathfinder);
+  out.brandOnLogin = STRICT_VANILLA_MODE ? true : (raw.brandOnLogin !== undefined ? !!raw.brandOnLogin : NATURAL_BEHAVIOR_DEFAULTS.brandOnLogin);
   out.reconnectDelay = Number(cfg.reconnectDelay ?? raw.reconnectDelay ?? out.reconnectDelay);
   if (!Number.isFinite(out.reconnectDelay) || out.reconnectDelay < 0) out.reconnectDelay = NATURAL_BEHAVIOR_DEFAULTS.reconnectDelay;
   return out;

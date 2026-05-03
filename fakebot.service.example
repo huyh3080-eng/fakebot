@@ -21,6 +21,7 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=CANONICAL_BASE_URL=https://cp.oceandeepsmc.top
+Environment=MC_STRICT_VANILLA=1
 Environment=MC_CLIENT_BRAND=vanilla
 Environment=MC_ALLOW_PLUGIN_CHANNELS=0
 Environment=MC_ALLOW_BRAND_CHANNEL=1

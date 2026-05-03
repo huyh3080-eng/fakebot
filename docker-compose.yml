@@ -13,6 +13,7 @@ services:
       - PORT=3000
       - CANONICAL_BASE_URL=https://cp.oceandeepsmc.top
       - DATA_DIR=/data
+      - MC_STRICT_VANILLA=1
       - MC_CLIENT_BRAND=vanilla
       - MC_ALLOW_PLUGIN_CHANNELS=0
       - MC_ALLOW_BRAND_CHANNEL=1
