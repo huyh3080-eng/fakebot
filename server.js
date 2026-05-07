@@ -844,11 +844,22 @@ function calcInitialJoinBaseDelayMs(cfg) {
   return randInt(minMs, maxMs);
 }
 
-function calcCycleOffDelayMs(cfg) {
+function getCycleOffRangeMs(cfg) {
   const minSec = Math.max(0, Number(cfg?.minOff) || 0);
   const maxSecRaw = Number(cfg?.maxOff);
   const maxSec = Math.max(minSec, Number.isFinite(maxSecRaw) ? maxSecRaw : minSec);
-  return randInt(Math.round(minSec * 1000), Math.round(maxSec * 1000));
+  const minMs = Math.max(0, Math.round(minSec * 1000));
+  const maxMs = Math.max(minMs, Math.round(maxSec * 1000));
+  return {
+    minMs,
+    maxMs,
+    configured: minMs > 0 || maxMs > 0,
+  };
+}
+
+function calcCycleOffDelayMs(cfg) {
+  const range = getCycleOffRangeMs(cfg);
+  return randInt(range.minMs, range.maxMs);
 }
 
 function normalizeMcVersion(v) {
@@ -1179,12 +1190,17 @@ function finishServerLoginAttempt(serverKey, { cfg, success = false, fastKick = 
 }
 
 function calcReconnectDelayMs(name, cfg, lastKickReasonText, opts = {}) {
-  if (opts.intentionalCycleQuit) {
-    return calcCycleOffDelayMs(cfg);
-  }
+  const offRange = getCycleOffRangeMs(cfg);
+
   if (isLoginFastKickReason(lastKickReasonText)) {
+    if (offRange.configured) return randInt(offRange.minMs, offRange.maxMs);
     return randInt(1500, 3500);
   }
+
+  if (opts.intentionalCycleQuit || offRange.configured) {
+    return randInt(offRange.minMs, offRange.maxMs);
+  }
+
   return getNaturalBehaviorCfg(cfg).reconnectDelay + randInt(250, 1250);
 }
 
@@ -1408,10 +1424,11 @@ function spawnBot(name, serverKey) {
       const timeOffMs = calcReconnectDelayMs(name, CFG, lastKickReasonText, { intentionalCycleQuit });
       const enforcedCooldownMs = Math.max(0, Number(loginMeta?.cooldownMs || 0));
       const nextWaitMs = Math.max(timeOffMs, enforcedCooldownMs);
+      const offRange = getCycleOffRangeMs(CFG);
       if (wasFastLoginKick && enforcedCooldownMs > 0) {
         sendLogs(name, `[AntiKick] wait ${Math.round(enforcedCooldownMs / 1000)}s (streak ${Number(loginMeta?.streak || 1)}).`);
       }
-      if (intentionalCycleQuit) {
+      if (intentionalCycleQuit || offRange.configured) {
         sendLogs(name, `§8[Cycle] Random off ${formatDurationMsShort(nextWaitMs)} before reconnect.`);
       }
       sendLogs(name, `§7Nghỉ ${Math.round(nextWaitMs / 1000)}s...`);

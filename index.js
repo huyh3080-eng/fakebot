@@ -314,6 +314,58 @@ function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
 
+function formatDurationMsShort(ms) {
+  const totalSec = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
+function calcFirstJoinFixedDelayMs(cfg) {
+  const MIN_FIRST_CONNECT_MS = 5000;
+  const fixedPreDelaySec = Math.max(0, Number(cfg?.preConnectDelay) || 0);
+  return Math.max(MIN_FIRST_CONNECT_MS, Math.round(fixedPreDelaySec * 1000));
+}
+
+function calcInitialJoinBaseDelayMs(cfg) {
+  const MIN_FIRST_CONNECT_MS = 5000;
+  const fixedPreDelayMs = calcFirstJoinFixedDelayMs(cfg);
+
+  const randomMinSec = Math.max(0, Number(cfg?.firstJoinRandomMinDelay) || 0);
+  const randomMaxSecRaw = Number(cfg?.firstJoinRandomMaxDelay);
+  const randomMaxSec = Math.max(randomMinSec, Number.isFinite(randomMaxSecRaw) ? randomMaxSecRaw : randomMinSec);
+
+  if (randomMinSec === 0 && randomMaxSec === 0) return fixedPreDelayMs;
+
+  const minMs = Math.max(MIN_FIRST_CONNECT_MS, Math.round(randomMinSec * 1000));
+  const maxMs = Math.max(minMs, Math.round(randomMaxSec * 1000));
+  return randInt(minMs, maxMs);
+}
+
+function getCycleOffRangeMs(cfg) {
+  const minSec = Math.max(0, Number(cfg?.minOff) || 0);
+  const maxSecRaw = Number(cfg?.maxOff);
+  const maxSec = Math.max(minSec, Number.isFinite(maxSecRaw) ? maxSecRaw : minSec);
+  const minMs = Math.max(0, Math.round(minSec * 1000));
+  const maxMs = Math.max(minMs, Math.round(maxSec * 1000));
+  return {
+    minMs,
+    maxMs,
+    configured: minMs > 0 || maxMs > 0,
+  };
+}
+
+function calcReconnectDelayMs(cfg) {
+  const offRange = getCycleOffRangeMs(cfg);
+  if (offRange.configured) return randInt(offRange.minMs, offRange.maxMs);
+  return getNaturalBehaviorCfg(cfg).reconnectDelay + randInt(250, 1250);
+}
+
 function getNaturalBehaviorCfg(cfg = {}) {
   const raw = cfg.naturalBehavior && typeof cfg.naturalBehavior === "object" ? cfg.naturalBehavior : {};
   const out = { ...NATURAL_BEHAVIOR_DEFAULTS, ...raw };
@@ -670,6 +722,8 @@ function loadCfg() {
 
     reconnectDelay: NATURAL_BEHAVIOR_DEFAULTS.reconnectDelay,
     loginDelay: 1,
+    firstJoinRandomMinDelay: 0,
+    firstJoinRandomMaxDelay: 0,
     minOn: 30,
     maxOn: 60,
     minOff: 10,
@@ -703,6 +757,14 @@ function loadCfg() {
 
     cfg.port = parseInt(cfg.port) || def.port;
     cfg.loginDelay = parseInt(cfg.loginDelay) || def.loginDelay;
+
+    cfg.firstJoinRandomMinDelay = Number(cfg.firstJoinRandomMinDelay);
+    cfg.firstJoinRandomMaxDelay = Number(cfg.firstJoinRandomMaxDelay);
+    if (!Number.isFinite(cfg.firstJoinRandomMinDelay) || cfg.firstJoinRandomMinDelay < 0) cfg.firstJoinRandomMinDelay = def.firstJoinRandomMinDelay;
+    if (!Number.isFinite(cfg.firstJoinRandomMaxDelay) || cfg.firstJoinRandomMaxDelay < 0) cfg.firstJoinRandomMaxDelay = def.firstJoinRandomMaxDelay;
+    if (cfg.firstJoinRandomMinDelay > cfg.firstJoinRandomMaxDelay) {
+      [cfg.firstJoinRandomMinDelay, cfg.firstJoinRandomMaxDelay] = [cfg.firstJoinRandomMaxDelay, cfg.firstJoinRandomMinDelay];
+    }
 
     cfg.minOn = parseInt(cfg.minOn) || def.minOn;
     cfg.maxOn = parseInt(cfg.maxOn) || def.maxOn;
@@ -1144,11 +1206,12 @@ function spawnBot(name) {
 
     if (desiredBots.has(name)) {
       const current = loadCfg();
-      const minOff = Math.max(0, Math.min(86400, parseInt(current.minOff) || 0));
-      const maxOff = Math.max(0, Math.min(86400, parseInt(current.maxOff) || 0));
       // Random thời gian nghỉ riêng từng bot, thêm jitter 0–8s để không vào lại hàng loạt
-      const reconnectDelayMs = getNaturalBehaviorCfg(current).reconnectDelay;
-      const timeOffMs = reconnectDelayMs + randInt(250, 1250);
+      const timeOffMs = calcReconnectDelayMs(current);
+      const offRange = getCycleOffRangeMs(current);
+      if (offRange.configured) {
+        sendLogs(name, `[Cycle] Random off ${formatDurationMsShort(timeOffMs)} before reconnect.`);
+      }
       sendLogs(name, `§7Nghỉ ${Math.round(timeOffMs / 1000)}s...`);
 
       setTimeout(() => {
@@ -1187,16 +1250,15 @@ ipcMain.on("run-all", (e, payload) => {
 
   // Delay từ config UI (cfg) — đảm bảo dùng đúng số đã chỉnh
   const loginDelaySec = Math.max(0, parseInt(cfg.loginDelay, 10) || 0);
-  const preConnectDelaySec = Math.max(0, Number(cfg.preConnectDelay) || 0);
   const loginDelayMs = loginDelaySec * 1000;
-  const MIN_FIRST_CONNECT_MS = 5000;
-  const preDelayMs = Math.max(MIN_FIRST_CONNECT_MS, preConnectDelaySec * 1000);
 
   lastAllOnlineSent = false;
   list.forEach((name, i) => {
+    const initialDelayMs = calcInitialJoinBaseDelayMs(safe) + i * loginDelayMs;
+    sendLogs(name, `[Timer] Join after ${formatDurationMsShort(initialDelayMs)}.`);
     setTimeout(() => {
       if (desiredBots.has(name)) spawnBot(name);
-    }, preDelayMs + i * loginDelayMs);
+    }, initialDelayMs);
   });
   emitBotStatus();
 });
@@ -1222,19 +1284,18 @@ ipcMain.on("run-server", (e, payload = {}) => {
   autoCmdRuntimeEnabled = !!safe.autoCmdEnabled;
 
   const loginDelaySec = Math.max(0, parseInt(cfg.loginDelay, 10) || 0);
-  const preConnectDelaySec = Math.max(0, Number(cfg.preConnectDelay) || 0);
   const loginDelayMs = loginDelaySec * 1000;
-  const MIN_FIRST_CONNECT_MS = 5000;
-  const preDelayMs = Math.max(MIN_FIRST_CONNECT_MS, preConnectDelaySec * 1000);
 
   lastAllOnlineSent = false;
   selected.forEach((name, i) => {
     desiredBots.add(name);
     botServerMap[name] = serverKey;
+    const initialDelayMs = calcInitialJoinBaseDelayMs(safe) + i * loginDelayMs;
     sendLogs(name, `§aĐang khởi động bot ${serverKey === "smp" ? "SMP" : "Skyblock"}...`);
+    sendLogs(name, `[Timer] Join after ${formatDurationMsShort(initialDelayMs)}.`);
     setTimeout(() => {
       if (desiredBots.has(name)) spawnBot(name);
-    }, preDelayMs + i * loginDelayMs);
+    }, initialDelayMs);
   });
   emitBotStatus();
 });
