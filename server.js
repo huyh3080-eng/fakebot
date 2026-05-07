@@ -632,6 +632,18 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (mx - mn + 1) + mn);
 }
 
+function formatDurationMsShort(ms) {
+  const totalSec = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
@@ -830,6 +842,13 @@ function calcInitialJoinBaseDelayMs(cfg) {
   const minMs = Math.max(MIN_FIRST_CONNECT_MS, Math.round(randomMinSec * 1000));
   const maxMs = Math.max(minMs, Math.round(randomMaxSec * 1000));
   return randInt(minMs, maxMs);
+}
+
+function calcCycleOffDelayMs(cfg) {
+  const minSec = Math.max(0, Number(cfg?.minOff) || 0);
+  const maxSecRaw = Number(cfg?.maxOff);
+  const maxSec = Math.max(minSec, Number.isFinite(maxSecRaw) ? maxSecRaw : minSec);
+  return randInt(Math.round(minSec * 1000), Math.round(maxSec * 1000));
 }
 
 function normalizeMcVersion(v) {
@@ -1159,7 +1178,10 @@ function finishServerLoginAttempt(serverKey, { cfg, success = false, fastKick = 
   };
 }
 
-function calcReconnectDelayMs(name, cfg, lastKickReasonText) {
+function calcReconnectDelayMs(name, cfg, lastKickReasonText, opts = {}) {
+  if (opts.intentionalCycleQuit) {
+    return calcCycleOffDelayMs(cfg);
+  }
   if (isLoginFastKickReason(lastKickReasonText)) {
     return randInt(1500, 3500);
   }
@@ -1299,7 +1321,13 @@ function spawnBot(name, serverKey) {
   loadPathfinderPlugin(bot, name, CFG);
   installVanillaBrandOnLogin(bot, name, CFG);
   armPayloadGuard(bot, name);
-  bot._panelMeta = { autoCmdTimers: [], naturalTimers: [], autoCmdRunning: false, naturalStopped: false };
+  bot._panelMeta = {
+    autoCmdTimers: [],
+    naturalTimers: [],
+    autoCmdRunning: false,
+    naturalStopped: false,
+    cycleQuitExpected: false,
+  };
 
   let quitTimer = null;
   let lastKickReasonText = "";
@@ -1318,8 +1346,15 @@ function spawnBot(name, serverKey) {
     const jitterOnSec = randInt(0, extraSpreadSec);
     const botPhaseSec = hashNameMod(name, 11);
     const timeOnMs = (timeOnSec + jitterOnSec + botPhaseSec) * 1000;
+    const minOffMs = Math.max(0, Math.round(Math.min(Number(CFG.minOff) || 0, Number(CFG.maxOff) || 0) * 1000));
+    const maxOffMs = Math.max(minOffMs, Math.round(Math.max(Number(CFG.minOff) || 0, Number(CFG.maxOff) || 0) * 1000));
+    sendLogs(
+      name,
+      `§8[Timer] Online ${formatDurationMsShort(timeOnMs)}; nghỉ random ${formatDurationMsShort(minOffMs)} -> ${formatDurationMsShort(maxOffMs)} trước khi vào lại.`
+    );
     quitTimer = setTimeout(() => {
       if (activeBots[name]) {
+        if (bot?._panelMeta) bot._panelMeta.cycleQuitExpected = true;
         try { bot.quit(); } catch {}
       }
     }, timeOnMs);
@@ -1337,6 +1372,7 @@ function spawnBot(name, serverKey) {
   });
 
   bot.on("kicked", (reason) => {
+    if (bot?._panelMeta) bot._panelMeta.cycleQuitExpected = false;
     let text = "";
     try {
       text = reason?.value?.text?.value ?? reason?.text ?? (typeof reason === "string" ? reason : JSON.stringify(reason));
@@ -1350,11 +1386,14 @@ function spawnBot(name, serverKey) {
   });
 
   bot.on("error", (err) => {
+    if (bot?._panelMeta) bot._panelMeta.cycleQuitExpected = false;
     markLoginPhaseDone({ success: false, fastKick: false });
     sendLogs(name, `§cLỗi: ${err?.message || String(err)}`);
   });
 
   bot.on("end", () => {
+    const intentionalCycleQuit = !!bot?._panelMeta?.cycleQuitExpected;
+    if (bot?._panelMeta) bot._panelMeta.cycleQuitExpected = false;
     const loginMeta = markLoginPhaseDone({ success: false, fastKick: wasFastLoginKick });
     stopAutoCmdTimers(bot);
     if (quitTimer) clearTimeout(quitTimer);
@@ -1366,11 +1405,14 @@ function spawnBot(name, serverKey) {
 
     if (desiredBots.has(name)) {
       if (savedServerKey) botServerMap[name] = savedServerKey;
-      const timeOffMs = calcReconnectDelayMs(name, CFG, lastKickReasonText);
+      const timeOffMs = calcReconnectDelayMs(name, CFG, lastKickReasonText, { intentionalCycleQuit });
       const enforcedCooldownMs = Math.max(0, Number(loginMeta?.cooldownMs || 0));
       const nextWaitMs = Math.max(timeOffMs, enforcedCooldownMs);
       if (wasFastLoginKick && enforcedCooldownMs > 0) {
         sendLogs(name, `[AntiKick] wait ${Math.round(enforcedCooldownMs / 1000)}s (streak ${Number(loginMeta?.streak || 1)}).`);
+      }
+      if (intentionalCycleQuit) {
+        sendLogs(name, `§8[Cycle] Random off ${formatDurationMsShort(nextWaitMs)} before reconnect.`);
       }
       sendLogs(name, `§7Nghỉ ${Math.round(nextWaitMs / 1000)}s...`);
 
@@ -1459,15 +1501,17 @@ function runAllBots(botCmdMapFromApi) {
   CFG.servers.smp.selectedBots.forEach((name, i) => {
     botServerMap[name] = "smp";
     sendLogs(name, `§a⏳ Đang khởi động bot SMP...`);
-    const initialDelayMs = i === 0 ? calcFirstJoinFixedDelayMs(CFG) : calcInitialJoinBaseDelayMs(CFG);
-    scheduleBotSpawn(name, "smp", initialDelayMs + i * loginDelayMs);
+    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG) + i * loginDelayMs;
+    sendLogs(name, `§8[Timer] Sẽ vào sau ${formatDurationMsShort(initialDelayMs)}.`);
+    scheduleBotSpawn(name, "smp", initialDelayMs);
   });
   const smpCount = CFG.servers.smp.selectedBots.length;
   CFG.servers.sky.selectedBots.forEach((name, i) => {
     botServerMap[name] = "sky";
     sendLogs(name, `§a⏳ Đang khởi động bot Skyblock...`);
-    const initialDelayMs = i === 0 ? calcFirstJoinFixedDelayMs(CFG) : calcInitialJoinBaseDelayMs(CFG);
-    scheduleBotSpawn(name, "sky", initialDelayMs + (smpCount + i) * loginDelayMs);
+    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG) + (smpCount + i) * loginDelayMs;
+    sendLogs(name, `§8[Timer] Sẽ vào sau ${formatDurationMsShort(initialDelayMs)}.`);
+    scheduleBotSpawn(name, "sky", initialDelayMs);
   });
 
   emitBotStatus();
@@ -1564,8 +1608,9 @@ app.post("/api/run-server", (req, res) => {
     desiredBots.add(name);
     botServerMap[name] = serverKey;
     sendLogs(name, `§a⏳ Đang khởi động bot ${serverKey.toUpperCase()}...`);
-    const initialDelayMs = i === 0 ? calcFirstJoinFixedDelayMs(CFG) : calcInitialJoinBaseDelayMs(CFG);
-    scheduleBotSpawn(name, serverKey, initialDelayMs + i * loginDelayMs);
+    const initialDelayMs = calcInitialJoinBaseDelayMs(CFG) + i * loginDelayMs;
+    sendLogs(name, `§8[Timer] Sẽ vào sau ${formatDurationMsShort(initialDelayMs)}.`);
+    scheduleBotSpawn(name, serverKey, initialDelayMs);
   });
 
   emitBotStatus();

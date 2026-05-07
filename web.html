@@ -533,7 +533,7 @@
             <div class="field">
               <div class="label">Min Random Join</div>
               <input id="firstJoinRandomMinDelay" placeholder="vd: 8" />
-              <div class="mini">Bot sẽ vào lần đầu ngẫu nhiên từ mốc này</div>
+              <div class="mini">Đơn vị là giây, ví dụ 15 = 15 giây</div>
             </div>
             <div class="field">
               <div class="label">Max Random Join</div>
@@ -541,6 +541,7 @@
               <div class="mini">Nếu Min/Max = 0 thì dùng Connect Delay cũ</div>
             </div>
           </div>
+          <div id="randomJoinPreview" class="mini" style="margin-top:8px;"></div>
         </div>
 
         <div class="grid2" style="margin-top:10px;">
@@ -575,29 +576,32 @@
           <div class="field">
             <div class="label">Min On (giây)</div>
             <input id="minOn" placeholder="vd: 30" />
-            <div class="mini">Thời gian online ít nhất</div>
+            <div class="mini">Thời gian online ít nhất, tính theo giây</div>
           </div>
 
           <div class="field">
             <div class="label">Max On (giây)</div>
             <input id="maxOn" placeholder="vd: 60" />
-            <div class="mini">Thời gian online nhiều nhất</div>
+            <div class="mini">Thời gian online nhiều nhất, tính theo giây</div>
           </div>
         </div>
+        <div id="onlineCyclePreview" class="mini" style="margin-top:8px;"></div>
 
         <div class="grid2" style="margin-top:10px;">
           <div class="field">
             <div class="label">Min Off (giây)</div>
             <input id="minOff" placeholder="vd: 10" />
-            <div class="mini">Thời gian nghỉ ít nhất</div>
+            <div class="mini">Thời gian nghỉ ít nhất, tính theo giây</div>
           </div>
 
           <div class="field">
             <div class="label">Max Off (giây)</div>
             <input id="maxOff" placeholder="vd: 20" />
-            <div class="mini">Thời gian nghỉ nhiều nhất</div>
+            <div class="mini">Thời gian nghỉ nhiều nhất, tính theo giây</div>
           </div>
         </div>
+        <div id="offlineCyclePreview" class="mini" style="margin-top:8px;"></div>
+        <div id="timingWarning" class="mini" style="margin-top:6px;color:#fbbf24;"></div>
 
         <div class="btnRow2">
           <button id="btnRunAll" class="success">Chạy Tất Cả (SMP + Skyblock)</button>
@@ -1547,6 +1551,61 @@
       return s;
     }
 
+    function formatSecondsHuman(raw) {
+      const n = Math.max(0, Number(raw) || 0);
+      const rounded = Math.round(n * 10) / 10;
+      const label = Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.0$/, "");
+      const wholeSeconds = Math.round(n);
+      if (wholeSeconds < 60) return `${label} giây`;
+
+      const hours = Math.floor(wholeSeconds / 3600);
+      const minutes = Math.floor((wholeSeconds % 3600) / 60);
+      const seconds = wholeSeconds % 60;
+      const parts = [];
+      if (hours > 0) parts.push(`${hours} giờ`);
+      if (minutes > 0) parts.push(`${minutes} phút`);
+      if (seconds > 0 || parts.length === 0) parts.push(`${seconds} giây`);
+      return `${label} giây (~${parts.join(" ")})`;
+    }
+
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function updateTimingPreviews() {
+      const joinMin = numOr(CFG.firstJoinRandomMinDelay, getVal("firstJoinRandomMinDelay"), { int: false, min: 0 });
+      const joinMax = numOr(CFG.firstJoinRandomMaxDelay, getVal("firstJoinRandomMaxDelay"), { int: false, min: 0 });
+      const onMin = numOr(CFG.minOn, getVal("minOn"), { int: true, min: 1 });
+      const onMax = numOr(CFG.maxOn, getVal("maxOn"), { int: true, min: 1 });
+      const offMin = numOr(CFG.minOff, getVal("minOff"), { int: true, min: 0 });
+      const offMax = numOr(CFG.maxOff, getVal("maxOff"), { int: true, min: 0 });
+
+      const joinLo = Math.min(joinMin, joinMax);
+      const joinHi = Math.max(joinMin, joinMax);
+      const onLo = Math.min(onMin, onMax);
+      const onHi = Math.max(onMin, onMax);
+      const offLo = Math.min(offMin, offMax);
+      const offHi = Math.max(offMin, offMax);
+
+      setText(
+        "randomJoinPreview",
+        joinLo === 0 && joinHi === 0
+          ? "Random Join đang tắt, bot sẽ dùng Connect Delay cố định."
+          : `Random Join hiện tại: ${formatSecondsHuman(joinLo)} -> ${formatSecondsHuman(joinHi)}.`
+      );
+      setText("onlineCyclePreview", `Mỗi vòng online: ${formatSecondsHuman(onLo)} -> ${formatSecondsHuman(onHi)}.`);
+      setText("offlineCyclePreview", `Mỗi vòng nghỉ: ${formatSecondsHuman(offLo)} -> ${formatSecondsHuman(offHi)}.`);
+
+      const suspicious = [joinLo, joinHi, onLo, onHi, offLo, offHi].some((value) => Number(value) >= 600);
+      setText(
+        "timingWarning",
+        suspicious
+          ? "Lưu ý: các ô này dùng đơn vị giây. Ví dụ 5000 nghĩa là 5000 giây, không phải 5 giây."
+          : ""
+      );
+    }
+
     function updateCfgFromInputs() {
       CFG.ip = getVal("ip").trim() || CFG.ip;
       CFG.port = numOr(CFG.port, getVal("port"), { int: true, min: 1 });
@@ -1568,6 +1627,7 @@
       if (CFG.firstJoinRandomMinDelay > CFG.firstJoinRandomMaxDelay) {
         [CFG.firstJoinRandomMinDelay, CFG.firstJoinRandomMaxDelay] = [CFG.firstJoinRandomMaxDelay, CFG.firstJoinRandomMinDelay];
       }
+      updateTimingPreviews();
     }
 
     function renderUI() {
@@ -1584,6 +1644,7 @@
       setVal("maxOn", CFG.maxOn);
       setVal("minOff", CFG.minOff);
       setVal("maxOff", CFG.maxOff);
+      updateTimingPreviews();
 
       setAutoCmdBtn(CFG.autoCmdEnabled);
       setAutoStartOnBootBtn(CFG.autoStartOnBoot !== false);
@@ -1970,6 +2031,9 @@
       inputs.forEach((id) => {
         const el = document.getElementById(id);
         if (el) {
+          if (["firstJoinRandomMinDelay", "firstJoinRandomMaxDelay", "minOn", "maxOn", "minOff", "maxOff"].includes(id)) {
+            el.oninput = updateTimingPreviews;
+          }
           el.onchange = saveConfig;
           el.onblur = saveConfig;
         }
